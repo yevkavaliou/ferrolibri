@@ -4,7 +4,10 @@ param(
     [Parameter(Mandatory)][string]$Output,
     [ValidateRange(10, 100)][int]$Opacity = 30,
     # Hand the focus to the backdrop window before capturing (inactive-window look).
-    [switch]$Inactive
+    [switch]$Inactive,
+    # Seconds to wait before the capture, and when (ms after start) to fake scroll activity.
+    [double]$Delay = 5,
+    [int]$ScrollAtMs = -1
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -42,8 +45,9 @@ $backdrop = Start-Job -ArgumentList $flag -ScriptBlock {
 try {
     Start-Sleep 3
     $env:PROBE_OPACITY = "$Opacity"
+    if ($ScrollAtMs -ge 0) { $env:PROBE_SCROLL_AT_MS = "$ScrollAtMs" }
     $probe = Start-Process (Join-Path $root 'target/debug/examples/blur_probe.exe') -PassThru
-    Start-Sleep 5
+    Start-Sleep $Delay
     if ($Inactive) {
         # The backdrop takes the focus; the probe stays visible above it, unfocused.
         Add-Type -Namespace Native -Name Top -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr h, System.IntPtr after, int x, int y, int cx, int cy, uint flags);'
@@ -61,5 +65,6 @@ try {
     Stop-Job $backdrop -ErrorAction SilentlyContinue
     Remove-Job $backdrop -Force -ErrorAction SilentlyContinue
     Remove-Item Env:PROBE_OPACITY -ErrorAction SilentlyContinue
+    Remove-Item Env:PROBE_SCROLL_AT_MS -ErrorAction SilentlyContinue
     Remove-Item $flag -ErrorAction SilentlyContinue
 }

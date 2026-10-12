@@ -127,6 +127,9 @@ pub struct State {
     pending_settings: Option<UiSettings>,
     requested_settings: Option<UiSettings>,
     pub closing: bool,
+    /// Scrollbars are shown (recent scrolling); hidden after the idle delay.
+    pub scroll_visible: bool,
+    scroll_last: Option<std::time::Instant>,
     pub blur: crate::blur::BlurState,
 }
 impl State {
@@ -204,6 +207,7 @@ pub enum Message {
     UseExport,
     OpenFolder(PathBuf),
     Clock(std::time::Instant),
+    ScrollActivity,
     DismissToast(u64),
     DismissNotice(usize),
     Viewport(iced::Size),
@@ -762,7 +766,18 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             }
             poll(state, services);
         }
+        Message::ScrollActivity => {
+            state.scroll_visible = true;
+            state.scroll_last = Some(std::time::Instant::now());
+        }
         Message::Clock(now) => {
+            if let Some(last) = state.scroll_last
+                && now.saturating_duration_since(last)
+                    >= Duration::from_secs(theme::SCROLLBAR_IDLE_SECS)
+            {
+                state.scroll_visible = false;
+                state.scroll_last = None;
+            }
             crate::widgets::toasts::advance(state, now);
             return update(state, Message::Tick, services);
         }
@@ -1207,6 +1222,8 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             }
         }
         Message::ListScrolled { offset, height } => {
+            state.scroll_visible = true;
+            state.scroll_last = Some(std::time::Instant::now());
             state.list_offset = offset;
             state.list_height = height;
             return load_visible_covers(state, services);
@@ -1570,6 +1587,7 @@ pub fn subscription(state: &State) -> Subscription<Message> {
         .values()
         .any(|job| matches!(job.state, JobState::Waiting | JobState::Running))
         || state.active_scan.is_some()
+        || state.scroll_visible
         || !state.metadata_requests.is_empty()
         || state.toasts.iter().any(|t| !t.error))
         && !state.closing
@@ -1596,6 +1614,9 @@ pub fn subscription(state: &State) -> Subscription<Message> {
             ),
             iced::Event::Keyboard(event) if status == iced::event::Status::Ignored => {
                 Some(Message::Keyboard(event))
+            }
+            iced::Event::Mouse(iced::mouse::Event::WheelScrolled { .. }) => {
+                Some(Message::ScrollActivity)
             }
             iced::Event::Window(iced::window::Event::Unfocused) => Some(Message::ResetModifiers),
             _ => None,
@@ -2223,6 +2244,37 @@ mod tests {
         // The settings still persist even when the effect is unavailable.
         assert_eq!(state.visible_settings().window_opacity, 50);
         assert!(state.visible_settings().window_blur);
+    }
+    #[test]
+    fn scrollbars_show_on_activity_and_hide_after_five_idle_seconds() {
+        let fake = Fake::default();
+        let mut state = State::default();
+        assert!(!state.scroll_visible);
+        step(&mut state, Message::ScrollActivity, &fake);
+        assert!(state.scroll_visible);
+        let last = state.scroll_last.unwrap();
+        step(
+            &mut state,
+            Message::Clock(last + Duration::from_millis(4999)),
+            &fake,
+        );
+        assert!(state.scroll_visible);
+        step(
+            &mut state,
+            Message::Clock(last + Duration::from_secs(5)),
+            &fake,
+        );
+        assert!(!state.scroll_visible);
+        // Scrolling by keyboard or by dragging the bar reports a list offset.
+        step(
+            &mut state,
+            Message::ListScrolled {
+                offset: 10.0,
+                height: 300.0,
+            },
+            &fake,
+        );
+        assert!(state.scroll_visible);
     }
     #[test]
     fn selection_metadata_error_fallback_and_a_b_a_are_guarded() {

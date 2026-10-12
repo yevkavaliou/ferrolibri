@@ -140,6 +140,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
             }
             rows = rows.push(
                 container(cards)
+                    .width(Fill)
                     .height(geometry.row_height)
                     .padding([0, 12]),
             );
@@ -147,10 +148,12 @@ pub fn view(state: &State) -> Element<'_, Message> {
         rows = rows.push(Space::new().height(
             (order.len().div_ceil(cols) - range.end.div_ceil(cols)) as f32 * geometry.row_height,
         ));
-        scrollable(rows)
+        scrollable(rows.width(Fill))
             .id(super::book_list::id())
+            .width(Fill)
             .height(Fill)
-            .style(theme::scroll)
+            .direction(theme::vbar())
+            .style(theme::scroll(state))
             .on_scroll(|v| Message::ListScrolled {
                 offset: v.absolute_offset().y,
                 height: v.bounds().height,

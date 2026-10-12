@@ -283,7 +283,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
             );
         }
         scrollable(warnings)
-            .style(theme::scroll)
+            .direction(theme::vbar())
+            .style(theme::scroll(state))
             .height(Fill)
             .into()
     } else if state.scan_status != ScanStatus::Ready {
@@ -408,7 +409,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
             scrollable(rows)
                 .id(id())
                 .height(Fill)
-                .style(theme::scroll)
+                .direction(theme::vbar())
+                .style(theme::scroll(state))
                 .on_scroll(|v| Message::ListScrolled {
                     offset: v.absolute_offset().y,
                     height: v.bounds().height,

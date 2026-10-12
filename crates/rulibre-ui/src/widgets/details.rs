@@ -266,12 +266,17 @@ pub fn view(state: &State) -> Element<'_, Message> {
     column![
         scrollable(content)
             .id("book-details-content")
-            .style(theme::scroll)
+            .direction(theme::vbar())
+            .style(theme::scroll(state))
             .height(Fill),
-        container(scrollable(actions).style(theme::scroll))
-            .padding(8)
-            .style(theme::conversion_menu)
-            .max_height(if state.convert_menu { 250.0 } else { 64.0 })
+        container(
+            scrollable(actions)
+                .direction(theme::vbar())
+                .style(theme::scroll(state))
+        )
+        .padding(8)
+        .style(theme::conversion_menu)
+        .max_height(if state.convert_menu { 250.0 } else { 64.0 })
     ]
     .spacing(12)
     .height(Fill)

@@ -292,10 +292,14 @@ fn sidebar(state: &State) -> Element<'_, Message> {
         state.screen == Screen::Settings,
     ));
     row![
-        container(iced::widget::scrollable(items).style(theme::scroll))
-            .padding([4, 6])
-            .width(Fill)
-            .height(Fill),
+        container(
+            iced::widget::scrollable(items)
+                .direction(theme::vbar())
+                .style(theme::scroll(state))
+        )
+        .padding([4, 6])
+        .width(Fill)
+        .height(Fill),
         vertical_line()
     ]
     .width(theme::SIDEBAR_WIDTH)
@@ -309,22 +313,29 @@ fn details(state: &State) -> Element<'_, Message> {
     } else {
         theme::DARK.panel
     };
+    let dragging = state.details_drag.is_some();
     row![
+        // The whole grip stays draggable; only a 1 px line is drawn (a 0.5 px quad
+        // on a fractional position vanishes), 2 px in the accent colour while dragging.
         iced::widget::mouse_area(
-            container(Space::new())
-                .width(theme::DETAILS_GRIP)
-                .height(Fill)
-                .style(|_| container::Style {
-                    background: Some(
-                        if state.details_drag.is_some() {
-                            theme::DARK.accent
-                        } else {
-                            theme::DARK.line
-                        }
-                        .into()
-                    ),
-                    ..Default::default()
-                })
+            container(
+                container(Space::new())
+                    .width(if dragging { 2.0 } else { 1.0 })
+                    .height(Fill)
+                    .style(move |_| container::Style {
+                        background: Some(
+                            if dragging {
+                                theme::DARK.accent
+                            } else {
+                                theme::DARK.line
+                            }
+                            .into()
+                        ),
+                        ..Default::default()
+                    })
+            )
+            .align_right(theme::DETAILS_GRIP)
+            .height(Fill)
         )
         .interaction(iced::mouse::Interaction::ResizingHorizontally)
         .on_press(Message::StartDetailsResize),
@@ -429,6 +440,11 @@ pub fn view<'a>(state: &'a State, content: Element<'a, Message>) -> Element<'a, 
                 .padding([4, 8])
                 .height(theme::TOOLBAR_HEIGHT)
                 .width(Fill),
+            // Same hairline as above the device bar.
+            container(Space::new())
+                .width(Fill)
+                .height(theme::LINE_WIDTH)
+                .style(theme::line),
             main,
             bottom,
         ]

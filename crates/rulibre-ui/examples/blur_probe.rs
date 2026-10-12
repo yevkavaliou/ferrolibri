@@ -62,9 +62,20 @@ fn main() -> iced::Result {
                 Task::batch([
                     task.map(|m| Event::App(Box::new(m))),
                     Task::perform(
-                        async { tokio::time::sleep(Duration::from_secs(9)).await },
+                        async { tokio::time::sleep(Duration::from_secs(14)).await },
                         |_| Event::Quit,
                     ),
+                    // PROBE_SCROLL_AT_MS: simulate scroll activity at that moment.
+                    match std::env::var("PROBE_SCROLL_AT_MS")
+                        .ok()
+                        .and_then(|v| v.parse::<u64>().ok())
+                    {
+                        Some(ms) => Task::perform(
+                            async move { tokio::time::sleep(Duration::from_millis(ms)).await },
+                            |_| Event::App(Box::new(Message::ScrollActivity)),
+                        ),
+                        None => Task::none(),
+                    },
                 ]),
             )
         },
@@ -75,6 +86,7 @@ fn main() -> iced::Result {
         },
         view,
     )
+    .subscription(|state: &State| app::subscription(state).map(|m| Event::App(Box::new(m))))
     .theme(|_: &State| theme::dark())
     .style(app::style)
     .window(iced::window::Settings {

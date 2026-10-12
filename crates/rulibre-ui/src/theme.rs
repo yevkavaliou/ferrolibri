@@ -181,17 +181,55 @@ pub fn input(_: &Theme, status: text_input::Status) -> text_input::Style {
         selection: DARK.selection,
     }
 }
-pub fn scroll(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
-    let mut style = scrollable::default(theme, status);
-    for rail in [&mut style.vertical_rail, &mut style.horizontal_rail] {
-        rail.background = None;
-        rail.scroller.background = DARK.text_muted.scale_alpha(0.5).into();
-        rail.scroller.border = Border {
-            radius: RADIUS.into(),
-            ..Default::default()
+/// Seconds of inactivity after which scrollbars fade out.
+pub const SCROLLBAR_IDLE_SECS: u64 = 5;
+/// Slim overlay scrollbar (no layout space, rounded 4 px scroller).
+pub fn vbar() -> scrollable::Direction {
+    scrollable::Direction::Vertical(
+        scrollable::Scrollbar::new()
+            .width(4)
+            .scroller_width(4)
+            .margin(2),
+    )
+}
+/// Scrollbars are visible while the user scrolls, drags or hovers one, and for
+/// `SCROLLBAR_IDLE_SECS` afterwards; otherwise the scroller is transparent.
+pub fn scroll(
+    state: &crate::app::State,
+) -> impl Fn(&Theme, scrollable::Status) -> scrollable::Style + 'static {
+    let recently_active = state.scroll_visible;
+    move |theme, status| {
+        let mut style = scrollable::default(theme, status);
+        let (hovered, dragged) = match status {
+            scrollable::Status::Hovered {
+                is_vertical_scrollbar_hovered,
+                ..
+            } => (is_vertical_scrollbar_hovered, false),
+            scrollable::Status::Dragged {
+                is_vertical_scrollbar_dragged,
+                ..
+            } => (false, is_vertical_scrollbar_dragged),
+            scrollable::Status::Active { .. } => (false, false),
         };
+        let alpha = if dragged {
+            0.8
+        } else if hovered {
+            0.65
+        } else if recently_active {
+            0.45
+        } else {
+            0.0
+        };
+        for rail in [&mut style.vertical_rail, &mut style.horizontal_rail] {
+            rail.background = None;
+            rail.scroller.background = DARK.text_muted.scale_alpha(alpha).into();
+            rail.scroller.border = Border {
+                radius: 2.0.into(),
+                ..Default::default()
+            };
+        }
+        style
     }
-    style
 }
 pub fn check(_: &Theme, status: checkbox::Status) -> checkbox::Style {
     let (checked, disabled) = match status {

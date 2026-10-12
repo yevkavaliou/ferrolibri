@@ -156,7 +156,10 @@ pub fn view(state: &State) -> Element<'_, Message> {
     }
     column![
         container(header).padding([2, 12]).height(36),
-        scrollable(body).height(Fill).style(theme::scroll)
+        scrollable(body)
+            .height(Fill)
+            .direction(theme::vbar())
+            .style(theme::scroll(state))
     ]
     .height(Fill)
     .into()

@@ -60,10 +60,14 @@ pub fn view(state: &State) -> Element<'_, Message> {
     for (index, notice) in state.notices.iter().enumerate() {
         items = items.push(card(state, notice, true, Message::DismissNotice(index)));
     }
-    container(scrollable(items).style(theme::scroll))
-        .width(340)
-        .max_height(280)
-        .into()
+    container(
+        scrollable(items)
+            .direction(theme::vbar())
+            .style(theme::scroll(state)),
+    )
+    .width(340)
+    .max_height(280)
+    .into()
 }
 fn card<'a>(state: &State, message: &'a str, error: bool, close: Message) -> Element<'a, Message> {
     container(

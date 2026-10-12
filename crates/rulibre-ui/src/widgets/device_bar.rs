@@ -372,7 +372,8 @@ pub fn menu(state: &State) -> Element<'_, Message> {
     container(
         scrollable(items)
             .height(iced::Length::Shrink)
-            .style(theme::scroll),
+            .direction(theme::vbar())
+            .style(theme::scroll(state)),
     )
     .padding(8)
     .width(360)

@@ -120,7 +120,9 @@ pub fn view(state: &State) -> Element<'_, Message> {
         container(text("Settings").size(theme::font(state, 16.0)))
             .padding([2, 12])
             .height(36),
-        scrollable(container(rows).padding(20).width(Fill)).style(theme::scroll),
+        scrollable(container(rows).padding(20).width(Fill))
+            .direction(theme::vbar())
+            .style(theme::scroll(state)),
     ]
     .height(Fill)
     .into()
