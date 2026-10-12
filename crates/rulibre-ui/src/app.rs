@@ -1746,6 +1746,11 @@ fn poll(state: &mut State, services: &dyn Services) {
                                 state.scan_warnings.len()
                             );
                         }
+                        log::info!(
+                            "Library scan finished: {} books, {} warnings",
+                            state.books.len(),
+                            state.scan_warnings.len()
+                        );
                         state.scan_status = ScanStatus::Ready;
                     }
                     Err(_) if cancelled => state.scan_status = ScanStatus::Cancelled,

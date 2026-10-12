@@ -1,17 +1,11 @@
 tui-run:
-    cargo run
+    cargo run -p rulibre
 
 tui-build:
-    cargo build
+    cargo build -p rulibre
 
-install-gui-prerequirements:
-    rustup target add wasm32-unknown-unknown
-    cargo install --locked trunk tauri-cli
+gui-run:
+    cargo run -p rulibre-ui --release
 
-[working-directory('crates/rulibre-gui')]
-gui-dev:
-    cargo tauri dev
-
-[working-directory("crates/rulibre-gui")]
 gui-build:
-    cargo tauri build
+    cargo build -p rulibre-ui --release

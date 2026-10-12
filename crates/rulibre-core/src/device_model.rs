@@ -1,4 +1,4 @@
-//! Device transport types shared by the host and WASM frontend.
+//! Device transport types: plain serializable data, separate from detection.
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

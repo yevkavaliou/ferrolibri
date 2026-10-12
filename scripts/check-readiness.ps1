@@ -1,4 +1,4 @@
-param([switch]$WasmIpc, [switch]$RealConverters, [switch]$Ui)
+param([switch]$RealConverters, [switch]$Ui)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $oldTmp = $env:TMP
@@ -10,8 +10,8 @@ try {
     $env:TEMP = $env:TMP
     $env:TMPDIR = $env:TMP
     [IO.Directory]::CreateDirectory($env:TMP) | Out-Null
-    & (Join-Path $PSScriptRoot 'check-clients.ps1') -WasmIpc:$WasmIpc
-    & cargo clippy --locked --all-targets -- -D warnings
+    & (Join-Path $PSScriptRoot 'check-clients.ps1')
+    & cargo clippy --locked -p rulibre-core -p rulibre --all-targets -- -D warnings
     if ($LASTEXITCODE -ne 0) { throw 'core/TUI Clippy failed' }
     & cargo test --locked -p rulibre-core --test device_detection native_volume_enumeration_smoke -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'native volume enumeration smoke failed' }

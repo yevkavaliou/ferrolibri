@@ -3,10 +3,9 @@ resolver = "2"
 members = [
     "crates/rulibre",
     "crates/rulibre-core",
-    "crates/rulibre-gui",
     "crates/rulibre-ui",
 ]
-default-members = ["crates/rulibre-core", "crates/rulibre"]
+default-members = ["crates/rulibre-core", "crates/rulibre", "crates/rulibre-ui"]
 exclude = ["vendor"]
 
 [workspace.package]

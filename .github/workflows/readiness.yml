@@ -16,25 +16,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Linux Tauri dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.93.1
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - uses: Swatinem/rust-cache@v2
-      - name: Install matching WASM binding generator
-        run: cargo install wasm-bindgen-cli --version 0.2.108 --locked
-      - name: Test core, clients, WASM IPC and native volumes
+      - name: Test core, TUI and native volumes
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force target | Out-Null
-          & pwsh -NoProfile -File scripts/check-readiness.ps1 -WasmIpc *>&1 | Tee-Object -FilePath target/readiness.log
+          & pwsh -NoProfile -File scripts/check-readiness.ps1 *>&1 | Tee-Object -FilePath target/readiness.log
           if ($LASTEXITCODE -ne 0) { throw 'Readiness checks failed' }
       - name: Save verification log
         if: always()

@@ -13,7 +13,7 @@ cargo install rulibre
 rulibre
 ```
 
-This installs the **TUI** (terminal) version. Conversion requires external tools; browsing and sending an existing compatible file do not. The GUI version is source-only (see [Build from source](#build-from-source)). These crates.io instructions refer to the upstream release; build this checkout to use the core changes documented below.
+This installs the **TUI** (terminal) version. Conversion requires external tools; browsing and sending an existing compatible file do not. The graphical (iced) version is source-only (see [Build from source](#build-from-source)). These crates.io instructions refer to the upstream release; build this checkout to use the core changes documented below.
 
 On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
 
@@ -23,9 +23,9 @@ On first run, you'll be prompted for your Calibre library path. The path is save
 cargo uninstall rulibre
 ```
 
-## Desktop UI (iced, in development)
+## Desktop UI (iced)
 
-A native desktop client built with [iced](https://iced.rs) lives in `crates/rulibre-ui`. It will replace the Tauri/Leptos GUI; until then both are in the repository. It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
+A native desktop client built with [iced](https://iced.rs) lives in `crates/rulibre-ui` and is the graphical client of Rulibre (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
 
 ![Rulibre iced UI: cover grid and details pane](docs/ui-item-15/scale-100-grid.png)
 
@@ -35,10 +35,12 @@ Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon
 cargo run -p rulibre-ui --release
 ```
 
+The executable is `rulibre-gui`; `rulibre` is the terminal UI. `cargo build --release` builds the core, the TUI and the iced UI.
+
 - **Platforms:** built, linted and tested in CI on Windows, Ubuntu 24.04 and macOS. It has only been run by hand on Windows 11. Window blur is Windows-only; other systems get an opaque window.
 - **External tools:** none to browse, search or send an existing compatible file. Conversion needs Calibre's `ebook-convert` and/or [kepubify](https://pgaskin.net/kepubify/).
 - **Keyboard:** `/` search, arrows move, Shift extends, Ctrl+A selects all, `T` sends, `C` opens Convert, Ctrl+B / Ctrl+I toggle the panes, Esc closes or clears.
-- **Not supported:** MTP and network readers, a light theme, metadata editing. No physical reader has been tested with this UI.
+- **Not supported:** MTP and network readers, a light theme, metadata editing, a right-click context menu. No physical reader has been tested with this UI.
 
 Architecture, module map, how to add a screen, tests and the full list of limitations: [docs/UI.md](docs/UI.md). Manual checklist and results: [docs/UI_CHECKLIST.md](docs/UI_CHECKLIST.md).
 
@@ -75,7 +77,7 @@ The Calibre library is read-only: Rulibre never imports conversions into it or c
 
 Detection enumerates mounted local filesystems on Windows, Linux and macOS and checks reader signatures. A volume label or a `documents` directory alone does not identify a reader. Kobo prefers existing KEPUB, then EPUB; Kindle prefers AZW3, then MOBI and can prepare AZW3 using Calibre. MTP and network storage are unsupported.
 
-The core supports explicit selection by device ID and `device::manual_device(path, kind)` for a validated mount root. Existing clients automatically select a single recognized reader; they do not yet expose a manual selection screen. Multiple readers without a prior selection require explicit selection through the core API.
+The core supports explicit selection by device ID and `device::manual_device(path, kind)` for a validated mount root. The TUI and the iced UI automatically select a single recognized reader. With several readers the iced UI asks you to choose one and offers manual folder selection; the TUI does not expose a manual selection screen. Multiple readers without a prior selection require explicit selection through the core API.
 
 Transfers copy into a temporary file on the destination and publish without overwriting. Cancellation and write failures are reported; if disconnection prevents cleanup, the error includes the partial file path. Root mount points are never recreated.
 
@@ -85,21 +87,23 @@ API contracts: [formats](docs/BOOK_FORMATS.md), [configuration](docs/CONFIG_PATH
 
 ## Verification
 
-With Rust 1.93.1, the WASM target and native Tauri build dependencies installed:
+With Rust 1.93.1:
 
 ```powershell
-pwsh -File scripts/check-readiness.ps1 -WasmIpc
+pwsh -File scripts/check-readiness.ps1
+pwsh -File scripts/check-ui.ps1
 ```
 
-`-WasmIpc` requires Node.js and `wasm-bindgen-cli` 0.2.108 (matching Cargo.lock). `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion. Core/TUI tests, strict Clippy, host tests, WASM checks and native volume enumeration run in the Windows/Linux/macOS CI matrix. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator and real-core send/cancel/conflict flows) on the same three systems; locally run `pwsh scripts/check-ui.ps1`. Host checks use temporary build resources; they do not verify GUI packaging or a running WebView. See the [final readiness report](docs/READINESS.md) for actual results and unverified hardware/platform limitations.
+`check-readiness.ps1` runs the core/TUI tests, strict Clippy and the native volume enumeration smoke; `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion, and `-Ui` also runs `check-ui.ps1`. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator, real-core send/cancel/conflict flows, and a release build of the whole default workspace) on Windows, Ubuntu 24.04 and macOS. See the [final readiness report](docs/READINESS.md) for actual results and unverified hardware/platform limitations.
 
 ## Build from source
 
 Rulibre ships these frontends from a single workspace:
 
 - **TUI** — the ratatui terminal interface, published on crates.io
-- **GUI** — Tauri 2 + Leptos desktop window (source-only)
-- **iced UI** — the native desktop client described [above](#desktop-ui-iced-in-development) (`cargo run -p rulibre-ui`)
+- **iced UI** — the native desktop client described [above](#desktop-ui-iced) (`cargo run -p rulibre-ui`, binary `rulibre-gui`)
+
+`cargo build --release` builds both and the core library.
 
 ### TUI
 
@@ -113,29 +117,13 @@ Or run directly from a checkout:
 cargo run -p rulibre
 ```
 
-### GUI
-
-Prerequisites:
+### Desktop UI
 
 ```
-rustup target add wasm32-unknown-unknown
-cargo install --locked trunk
-cargo install --locked tauri-cli --version "^2"
+cargo run -p rulibre-ui --release
 ```
 
-Development build:
-
-```
-cd crates/rulibre-gui
-cargo tauri dev
-```
-
-Release build:
-
-```
-cd crates/rulibre-gui
-cargo tauri build
-```
+or `cargo install --path crates/rulibre-ui` to install `rulibre-gui`. It is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)).
 
 ## Extra tools
 

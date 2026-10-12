@@ -5,6 +5,14 @@ edition.workspace = true
 license.workspace = true
 publish = false
 description = "Native iced desktop client for Rulibre"
+build = "build.rs"
+default-run = "rulibre-gui"
+
+# The TUI keeps `rulibre`; the graphical client is `rulibre-gui`, the name the
+# earlier Tauri client used, so existing instructions stay valid.
+[[bin]]
+name = "rulibre-gui"
+path = "src/main.rs"
 
 [dependencies]
 rulibre-core = { path = "../rulibre-core" }
@@ -30,3 +38,6 @@ libloading = "0.8"
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 window-vibrancy = "0.8"
+
+[build-dependencies]
+winresource = "0.1"

@@ -1,3 +1,10 @@
+// Release builds on Windows are a GUI-subsystem program: no console window.
+// Debug builds keep the console so `RUST_LOG` output stays visible.
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
 use rulibre_ui::{
     app,
     services::{RealServices, Services},
@@ -9,7 +16,19 @@ fn main() -> iced::Result {
     // Warnings the UI does not show (cover decoding, device polling, metadata,
     // scan) are logged; RUST_LOG overrides the default level.
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let services = std::sync::Arc::new(RealServices::new().expect("initialize UI services"));
+    let services = match RealServices::new() {
+        Ok(services) => std::sync::Arc::new(services),
+        Err(error) => {
+            // Without a console (release build on Windows) a panic would vanish.
+            log::error!("could not initialize services: {error}");
+            rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("Rulibre")
+                .set_description(format!("Rulibre could not start: {error}"))
+                .show();
+            std::process::exit(1);
+        }
+    };
     let update_services = services.clone();
     let boot_services = services.clone();
     let subscription_services = services.clone();

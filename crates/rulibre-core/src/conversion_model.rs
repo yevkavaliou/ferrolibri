@@ -1,4 +1,4 @@
-//! Serializable converter discovery shared with the WASM client.
+//! Serializable converter discovery types (plain data, no I/O).
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
