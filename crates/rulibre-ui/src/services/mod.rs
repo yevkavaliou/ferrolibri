@@ -131,6 +131,14 @@ pub struct RealServices {
 }
 impl RealServices {
     pub fn new() -> Result<Self, String> {
+        // Portable/fixture mode: keep config, preferences and the cover cache in one
+        // folder instead of the user's profile (used by the manual checklist).
+        if let Some(dir) = std::env::var_os("RULIBRE_UI_DATA_DIR").map(PathBuf::from) {
+            return Ok(
+                Self::with_paths(dir.join("config.toml"), dir.join("ui.toml"))?
+                    .with_cover_cache(dir.join("covers")),
+            );
+        }
         Self::with_paths(
             rulibre_core::config::Config::path().map_err(|e| e.to_string())?,
             UiSettings::path().map_err(|e| e.to_string())?,

@@ -2,6 +2,7 @@ pub mod app;
 pub mod blur;
 pub mod catalog;
 pub mod icons;
+pub mod keymap;
 pub mod response_guard;
 pub mod selection;
 pub mod services;

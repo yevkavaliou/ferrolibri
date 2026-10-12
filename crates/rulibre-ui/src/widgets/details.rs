@@ -87,6 +87,9 @@ pub fn unavailable(book: &Book, target: Format, backends: &[Backend]) -> String 
         .map(|error| error.to_string())
         .unwrap_or_default()
 }
+pub fn content_id() -> iced::widget::Id {
+    iced::widget::Id::new("book-details-content")
+}
 pub fn view(state: &State) -> Element<'_, Message> {
     let books = selected(state);
     let mut content = column![].spacing(10).width(Fill);
@@ -145,7 +148,20 @@ pub fn view(state: &State) -> Element<'_, Message> {
                     .color(theme::DARK.text_muted),
             );
         }
-        for (label, value) in fields(&metadata, book) {
+        let details = fields(&metadata, book);
+        if state.metadata.is_some()
+            && metadata.description.is_empty()
+            && details
+                .iter()
+                .all(|(label, _)| matches!(*label, "Author" | "Formats"))
+        {
+            content = content.push(
+                text("This book has no further details. Calibre can add them.")
+                    .size(theme::font(state, 11.0))
+                    .color(theme::DARK.text_muted),
+            );
+        }
+        for (label, value) in details {
             content = content.push(
                 column![
                     text(label)
@@ -181,7 +197,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
             );
         }
     }
-    let mut actions = column![
+    let mut actions = column![tooltip(
         button(
             text(if books.len() == 1 {
                 "Convert ▾".into()
@@ -192,8 +208,14 @@ pub fn view(state: &State) -> Element<'_, Message> {
         )
         .width(Fill)
         .style(theme::outline)
-        .on_press(Message::ToggleConvert)
-    ]
+        .on_press(Message::ToggleConvert),
+        text(crate::keymap::tip(
+            "Convert",
+            crate::keymap::Command::ToggleConvert
+        ))
+        .size(theme::font(state, 12.0)),
+        tooltip::Position::Left,
+    )]
     .spacing(6);
     if state.convert_menu {
         actions = actions.push(
@@ -218,6 +240,18 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 text(error)
                     .size(theme::font(state, 11.0))
                     .color(theme::DARK.error),
+            );
+        }
+        if state.backend_job.is_none()
+            && !state
+                .backends
+                .iter()
+                .any(|b| b.status == rulibre_core::converter::BackendStatus::Ready)
+        {
+            actions = actions.push(
+                text("No converter found. Install Calibre, then choose Refresh converters.")
+                    .size(theme::font(state, 11.0))
+                    .color(theme::DARK.warning),
             );
         }
         let available = targets(&books, &state.backends);
@@ -265,7 +299,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
     }
     column![
         scrollable(content)
-            .id("book-details-content")
+            .id(content_id())
             .direction(theme::vbar())
             .style(theme::scroll(state))
             .height(Fill),

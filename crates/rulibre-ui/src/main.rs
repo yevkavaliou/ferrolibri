@@ -6,7 +6,9 @@ mod screens;
 
 fn main() -> iced::Result {
     rulibre_ui::blur::prepare_environment();
-    env_logger::init();
+    // Warnings the UI does not show (cover decoding, device polling, metadata,
+    // scan) are logged; RUST_LOG overrides the default level.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let services = std::sync::Arc::new(RealServices::new().expect("initialize UI services"));
     let update_services = services.clone();
     let boot_services = services.clone();

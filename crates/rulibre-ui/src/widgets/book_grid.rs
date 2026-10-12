@@ -106,6 +106,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                     continue;
                 };
                 let selected = state.selection.selected.contains(id);
+                let focused = state.keyboard_focus && state.selection.cursor.as_ref() == Some(id);
                 let card = column![
                     cover(
                         state,
@@ -134,7 +135,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                     button(card)
                         .width(geometry.card_width)
                         .padding(6)
-                        .style(move |_, status| theme::book_row(selected, status))
+                        .style(move |_, status| theme::book_row(selected, focused, status))
                         .on_press(Message::BookClicked(id.clone())),
                 );
             }

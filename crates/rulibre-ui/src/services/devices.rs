@@ -97,6 +97,10 @@ impl ReaderState {
             .collect();
         match update.event {
             Some(DeviceEvent::PollFailed { diagnostic }) => {
+                // Polling repeats every few seconds; log a failure once, not each time.
+                if self.failure.as_deref() != Some(diagnostic.as_str()) {
+                    log::warn!("Reader polling failed: {diagnostic}");
+                }
                 self.selected_id = None;
                 self.devices.clear();
                 self.space.clear();
@@ -116,6 +120,9 @@ impl ReaderState {
                 }
                 if self.selected_id.is_none() && devices.len() == 1 {
                     self.selected_id = Some(devices[0].id.clone());
+                }
+                for warning in warnings.iter().filter(|w| !self.warnings.contains(w)) {
+                    log::warn!("Reader detection warning: {warning}");
                 }
                 self.devices = devices;
                 self.warnings = warnings;

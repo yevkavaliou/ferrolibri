@@ -42,7 +42,7 @@ impl Layout {
 fn icon_button(
     state: &State,
     icon: &'static [u8],
-    label: &'static str,
+    label: &str,
     message: Option<Message>,
     active: bool,
 ) -> Element<'static, Message> {
@@ -58,7 +58,7 @@ fn icon_button(
             .padding([4, 6])
             .style(theme::quiet)
             .on_press_maybe(message),
-        text(label).size(theme::font(state, 12.0)),
+        text(label.to_string()).size(theme::font(state, 12.0)),
         tooltip::Position::Bottom,
     )
     .into()
@@ -192,12 +192,20 @@ fn sidebar(state: &State) -> Element<'_, Message> {
                     filter: Filter::All
                 }
         ),
-        nav(
-            state,
-            icons::SEARCH,
-            "Search",
-            Screen::Search,
-            state.screen == Screen::Search
+        tooltip(
+            nav(
+                state,
+                icons::SEARCH,
+                "Search",
+                Screen::Search,
+                state.screen == Screen::Search
+            ),
+            text(crate::keymap::tip(
+                "Search",
+                crate::keymap::Command::OpenSearch
+            ))
+            .size(theme::font(state, 12.0)),
+            tooltip::Position::Right,
         ),
         group(
             state,
@@ -359,14 +367,14 @@ pub fn view<'a>(state: &'a State, content: Element<'a, Message>) -> Element<'a, 
     let sidebar_button = icon_button(
         state,
         icons::SIDEBAR,
-        "Toggle sidebar",
+        &crate::keymap::tip("Toggle sidebar", crate::keymap::Command::ToggleSidebar),
         (state.screen != Screen::Setup && !state.library_loading).then_some(Message::ToggleSidebar),
         layout.sidebar,
     );
     let details_button = icon_button(
         state,
         icons::SIDEBAR_RIGHT,
-        "Toggle details pane",
+        &crate::keymap::tip("Toggle details pane", crate::keymap::Command::ToggleDetails),
         layout.details_available.then_some(Message::ToggleDetails),
         layout.details,
     );

@@ -189,6 +189,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 text_input("Search by title or author", &state.search_query)
                     .id(crate::app::search_id())
                     .on_input(Message::SearchChanged)
+                    .on_submit(Message::SearchSubmit)
                     .padding([6, 10])
                     .size(theme::font(state, 13.0))
                     .style(theme::input),
@@ -291,7 +292,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
         let label = match &state.scan_status {
             ScanStatus::Running => "Scanning library…",
             ScanStatus::Failed(e) => e,
-            ScanStatus::Cancelled => "Scan cancelled.",
+            ScanStatus::Cancelled => "Scan cancelled. Scan again to load your books.",
             _ => "Scan the library to load books",
         };
         let mut body = column![text(label).size(theme::font(state, 13.0))].spacing(12);
@@ -372,6 +373,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
                     continue;
                 };
                 let selected = state.selection.selected.contains(&entry.book.id);
+                let focused =
+                    state.keyboard_focus && state.selection.cursor.as_ref() == Some(&entry.book.id);
                 let cell = row![
                     super::book_grid::cover(state, id, &entry.book.title, 22.0, 30.0),
                     text(ellipsis(
@@ -400,7 +403,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                         .height(state.row_height())
                         .width(Fill)
                         .padding([0, 12])
-                        .style(move |_, status| theme::book_row(selected, status))
+                        .style(move |_, status| theme::book_row(selected, focused, status))
                         .on_press(Message::BookClicked(entry.book.id.clone())),
                 );
             }

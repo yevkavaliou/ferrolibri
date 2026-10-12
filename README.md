@@ -23,6 +23,25 @@ On first run, you'll be prompted for your Calibre library path. The path is save
 cargo uninstall rulibre
 ```
 
+## Desktop UI (iced, in development)
+
+A native desktop client built with [iced](https://iced.rs) lives in `crates/rulibre-ui`. It will replace the Tauri/Leptos GUI; until then both are in the repository. It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
+
+![Rulibre iced UI: cover grid and details pane](docs/ui-item-15/scale-100-grid.png)
+
+Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon and Vulkan development packages listed in [`.github/workflows/ui.yml`](.github/workflows/ui.yml)):
+
+```
+cargo run -p rulibre-ui --release
+```
+
+- **Platforms:** built, linted and tested in CI on Windows, Ubuntu 24.04 and macOS. It has only been run by hand on Windows 11. Window blur is Windows-only; other systems get an opaque window.
+- **External tools:** none to browse, search or send an existing compatible file. Conversion needs Calibre's `ebook-convert` and/or [kepubify](https://pgaskin.net/kepubify/).
+- **Keyboard:** `/` search, arrows move, Shift extends, Ctrl+A selects all, `T` sends, `C` opens Convert, Ctrl+B / Ctrl+I toggle the panes, Esc closes or clears.
+- **Not supported:** MTP and network readers, a light theme, metadata editing. No physical reader has been tested with this UI.
+
+Architecture, module map, how to add a screen, tests and the full list of limitations: [docs/UI.md](docs/UI.md). Manual checklist and results: [docs/UI_CHECKLIST.md](docs/UI_CHECKLIST.md).
+
 ## Features
 
 - Browse all books in your Calibre library sorted by author and title
@@ -72,14 +91,15 @@ With Rust 1.93.1, the WASM target and native Tauri build dependencies installed:
 pwsh -File scripts/check-readiness.ps1 -WasmIpc
 ```
 
-`-WasmIpc` requires Node.js and `wasm-bindgen-cli` 0.2.108 (matching Cargo.lock). `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion. Core/TUI tests, strict Clippy, host tests, WASM checks and native volume enumeration run in the Windows/Linux/macOS CI matrix. Host checks use temporary build resources; they do not verify GUI packaging or a running WebView. See the [final readiness report](docs/READINESS.md) for actual results and unverified hardware/platform limitations.
+`-WasmIpc` requires Node.js and `wasm-bindgen-cli` 0.2.108 (matching Cargo.lock). `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion. Core/TUI tests, strict Clippy, host tests, WASM checks and native volume enumeration run in the Windows/Linux/macOS CI matrix. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator and real-core send/cancel/conflict flows) on the same three systems; locally run `pwsh scripts/check-ui.ps1`. Host checks use temporary build resources; they do not verify GUI packaging or a running WebView. See the [final readiness report](docs/READINESS.md) for actual results and unverified hardware/platform limitations.
 
 ## Build from source
 
-Rulibre ships two frontends from a single workspace:
+Rulibre ships these frontends from a single workspace:
 
 - **TUI** — the ratatui terminal interface, published on crates.io
 - **GUI** — Tauri 2 + Leptos desktop window (source-only)
+- **iced UI** — the native desktop client described [above](#desktop-ui-iced-in-development) (`cargo run -p rulibre-ui`)
 
 ### TUI
 

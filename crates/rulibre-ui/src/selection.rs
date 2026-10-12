@@ -37,8 +37,10 @@ impl Selection {
         }
         self.cursor = Some(id);
         self.order.retain(|id| self.selected.contains(id));
+        // A set keeps a 20,000-book range selection linear instead of quadratic.
+        let known: BTreeSet<BookId> = self.order.iter().cloned().collect();
         for id in order {
-            if self.selected.contains(id) && !self.order.contains(id) {
+            if self.selected.contains(id) && !known.contains(id) {
                 self.order.push(id.clone());
             }
         }
@@ -78,11 +80,27 @@ impl Selection {
             .and_then(|id| order.iter().position(|i| i == id))
             .map(|i| i.saturating_add_signed(delta).min(order.len() - 1))
             .unwrap_or(if delta < 0 { order.len() - 1 } else { 0 });
+        self.move_to(i, modifiers, order)
+    }
+    /// Move the cursor to an absolute index (Home/End); Shift extends the range.
+    pub fn move_to(
+        &mut self,
+        index: usize,
+        modifiers: Modifiers,
+        order: &[BookId],
+    ) -> Option<usize> {
+        let i = index.min(order.len().checked_sub(1)?);
         self.click(order[i].clone(), modifiers, order);
         Some(i)
     }
+    pub fn cursor_index(&self, order: &[BookId]) -> Option<usize> {
+        self.cursor
+            .as_ref()
+            .and_then(|id| order.iter().position(|i| i == id))
+    }
     /// Selection chronology, with a stable fallback for programmatic selections.
     pub fn ordered(&self) -> Vec<BookId> {
+        let known: BTreeSet<&BookId> = self.order.iter().collect();
         self.order
             .iter()
             .filter(|id| self.selected.contains(id))
@@ -90,7 +108,7 @@ impl Selection {
             .chain(
                 self.selected
                     .iter()
-                    .filter(|id| !self.order.contains(id))
+                    .filter(|id| !known.contains(id))
                     .cloned(),
             )
             .collect()
@@ -147,5 +165,34 @@ mod tests {
         s.clear();
         assert!(s.anchor.is_none());
         assert_eq!(s.move_cursor(1, Modifiers::empty(), &[]), None);
+        assert_eq!(s.move_to(3, Modifiers::empty(), &[]), None);
+    }
+    #[test]
+    fn huge_range_selection_stays_linear_and_keeps_chronology() {
+        // A quadratic range update takes many seconds here, even in a debug build.
+        let o: Vec<_> = (0..50_000).map(BookId::Calibre).collect();
+        let mut s = Selection::default();
+        s.click(o[10].clone(), Modifiers::empty(), &o);
+        let start = std::time::Instant::now();
+        s.click(o[49_999].clone(), Modifiers::SHIFT, &o);
+        let ordered = s.ordered();
+        eprintln!("50,000-book range selection: {:?}", start.elapsed());
+        assert!(start.elapsed() < std::time::Duration::from_secs(3));
+        assert_eq!(s.selected.len(), 49_990);
+        assert_eq!(ordered.len(), 49_990);
+        assert_eq!(ordered[0], o[10]);
+    }
+    #[test]
+    fn absolute_moves_clamp_and_extend() {
+        let o = ids();
+        let mut s = Selection::default();
+        assert_eq!(s.move_to(2, Modifiers::empty(), &o), Some(2));
+        assert_eq!(s.cursor_index(&o), Some(2));
+        assert_eq!(s.move_to(99, Modifiers::SHIFT, &o), Some(4));
+        assert_eq!(s.selected, o[2..].iter().cloned().collect());
+        assert_eq!(s.move_to(0, Modifiers::SHIFT, &o), Some(0));
+        assert_eq!(s.selected, o[..=2].iter().cloned().collect());
+        assert_eq!(s.move_to(4, Modifiers::empty(), &o), Some(4));
+        assert_eq!(s.selected, [o[4].clone()].into());
     }
 }

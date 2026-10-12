@@ -45,6 +45,9 @@ pub fn bar(state: &State) -> Element<'_, Message> {
             110.0
         } else if multiple {
             224.0
+        } else if selected.is_none() {
+            // Nothing else sits beside the label, so "No reader connected" fits whole.
+            200.0
         } else {
             148.0
         };
@@ -210,12 +213,9 @@ pub fn bar(state: &State) -> Element<'_, Message> {
                 .on_press_maybe(enabled.then_some(Message::Send));
             contents = contents.push(tooltip(
                 send,
-                text(if selected.is_some_and(|d| d.read_only) {
-                    "Reader is read-only"
-                } else if count == 0 {
-                    "Select books to send"
-                } else {
-                    "Send to reader"
+                text(match send_blocker(state) {
+                    Some(reason) => reason.to_string(),
+                    None => crate::keymap::tip("Send to reader", crate::keymap::Command::Send),
                 })
                 .size(theme::font(state, 12.0)),
                 tooltip::Position::Top,
@@ -245,6 +245,21 @@ pub fn bar(state: &State) -> Element<'_, Message> {
     .into()
 }
 
+/// Why Send would do nothing right now, phrased as the next step.
+pub fn send_blocker(state: &State) -> Option<&'static str> {
+    let readers = &state.readers;
+    if state.selection.selected.is_empty() {
+        Some("Select the books to send, then press T.")
+    } else if readers.failure.is_some() {
+        Some("The reader list could not be read. Reconnect the reader or choose its folder.")
+    } else if let Some(reader) = readers.selected() {
+        (!reader.can_transfer()).then_some("This reader is read-only, so books cannot be sent.")
+    } else if readers.devices.len() > 1 {
+        Some("Choose a reader in the bar below, then press T.")
+    } else {
+        Some("Connect a reader or choose its folder to send books.")
+    }
+}
 pub fn menu(state: &State) -> Element<'_, Message> {
     let picker = &state.reader_picker;
     let mut items = column![].spacing(6);

@@ -63,8 +63,18 @@ pub fn surface(_: &Theme) -> container::Style {
         ..Default::default()
     }
 }
-pub fn book_row(selected: bool, status: button::Status) -> button::Style {
+/// `focused` is the keyboard cursor: a visible outline that does not depend on colour alone.
+pub fn book_row(selected: bool, focused: bool, status: button::Status) -> button::Style {
     button::Style {
+        border: if focused {
+            Border {
+                color: DARK.accent,
+                width: 1.5,
+                radius: RADIUS.into(),
+            }
+        } else {
+            Border::default()
+        },
         background: if selected {
             Some(DARK.selection.into())
         } else if matches!(status, button::Status::Hovered | button::Status::Pressed) {

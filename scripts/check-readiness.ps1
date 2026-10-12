@@ -1,4 +1,4 @@
-param([switch]$WasmIpc, [switch]$RealConverters)
+param([switch]$WasmIpc, [switch]$RealConverters, [switch]$Ui)
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $oldTmp = $env:TMP
@@ -15,6 +15,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'core/TUI Clippy failed' }
     & cargo test --locked -p rulibre-core --test device_detection native_volume_enumeration_smoke -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'native volume enumeration smoke failed' }
+    if ($Ui) {
+        # The iced client has its own workflow (.github/workflows/ui.yml) with the same script.
+        & (Join-Path $PSScriptRoot 'check-ui.ps1')
+    }
     if ($RealConverters) {
         & cargo test --locked -p rulibre-core --lib converter::tests::real_ebook_convert_keeps_library_read_only -- --ignored --exact --nocapture
         if ($LASTEXITCODE -ne 0) { throw 'real ebook-convert smoke failed' }

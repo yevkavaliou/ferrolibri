@@ -1,4 +1,5 @@
 use crate::{
+    keymap,
     response_guard::{GenerationGuard, RequestKey, ResponseGuard},
     services::{
         Services,
@@ -103,6 +104,10 @@ pub struct State {
     pub sidebar_expansion: SidebarExpansion,
     pub facet_order: Vec<BookId>,
     pub search_query: String,
+    /// The last selection change came from the keyboard: draw the cursor outline.
+    pub keyboard_focus: bool,
+    /// Where Esc returns from Search.
+    pub search_return: Option<Screen>,
     pub search_order: Vec<BookId>,
     pub search_guard: GenerationGuard,
     pub search_running: Option<u64>,
@@ -157,16 +162,31 @@ impl State {
             .clamp(240.0, limit)
     }
     pub fn visible_order(&self) -> &[BookId] {
-        match self.screen {
-            Screen::Search => &self.search_order,
-            Screen::Home {
-                filter: Filter::All,
-            } => &self.catalog.order,
-            _ => &self.facet_order,
-        }
+        order_of(
+            &self.screen,
+            &self.search_order,
+            &self.catalog,
+            &self.facet_order,
+        )
     }
     pub fn visible_settings(&self) -> &UiSettings {
         self.requested_settings.as_ref().unwrap_or(&self.settings)
+    }
+}
+/// The books shown on `screen`, borrowed field by field so callers can keep
+/// mutating `selection` without copying a 20,000-entry order.
+pub fn order_of<'a>(
+    screen: &Screen,
+    search: &'a [BookId],
+    catalog: &'a crate::catalog::Catalog,
+    facets: &'a [BookId],
+) -> &'a [BookId] {
+    match screen {
+        Screen::Search => search,
+        Screen::Home {
+            filter: Filter::All,
+        } => &catalog.order,
+        _ => facets,
     }
 }
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -282,6 +302,7 @@ pub enum Message {
     Navigate(Screen),
     ToggleFacetGroup(FacetGroup),
     SearchChanged(String),
+    SearchSubmit,
     SearchFinished {
         generation: u64,
         result: Result<Vec<BookId>, String>,
@@ -1027,6 +1048,9 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         }
         Message::ToggleSidebar | Message::ToggleDetails => {}
         Message::Navigate(screen) => {
+            if screen == Screen::Search && matches!(state.screen, Screen::Home { .. }) {
+                state.search_return = Some(state.screen.clone());
+            }
             if !matches!(screen, Screen::Home { .. }) {
                 clear_selection(state);
             }
@@ -1052,6 +1076,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             };
             *value = !*value;
         }
+        Message::SearchSubmit => return run_command(state, keymap::Command::OpenDetails, services),
         Message::SearchChanged(query) => {
             state.search_query = query;
             invalidate_search(state);
@@ -1145,8 +1170,14 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             if !state.visible_order().contains(&id) {
                 return Task::none();
             }
-            let order = state.visible_order().to_vec();
-            state.selection.click(id, state.modifiers, &order);
+            let order = order_of(
+                &state.screen,
+                &state.search_order,
+                &state.catalog,
+                &state.facet_order,
+            );
+            state.selection.click(id, state.modifiers, order);
+            state.keyboard_focus = false;
             if state.screen == Screen::Search {
                 return Task::none();
             }
@@ -1158,69 +1189,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             state.details_drag = None;
             state.dragged_details_width = None;
         }
-        Message::Keyboard(event) => {
-            use iced::keyboard::{Event, Key, key::Named};
-            if state.reader_picker.open
-                && matches!(
-                    event,
-                    Event::KeyPressed {
-                        key: Key::Named(Named::Escape),
-                        ..
-                    }
-                )
-            {
-                state.reader_picker.close();
-                return Task::none();
-            }
-            match event {
-                Event::ModifiersChanged(modifiers) => state.modifiers = modifiers,
-                Event::KeyPressed { key, modifiers, .. }
-                    if matches!(state.screen, Screen::Home { .. })
-                        && state.visible_settings().view == crate::settings::ViewMode::List
-                        && !state.show_warnings =>
-                {
-                    state.modifiers = modifiers;
-                    let delta = match &key {
-                        Key::Named(Named::ArrowUp) => Some(-1),
-                        Key::Named(Named::ArrowDown) => Some(1),
-                        _ => None,
-                    };
-                    if let Some(delta) = delta {
-                        if let Some(index) = {
-                            let order = state.visible_order().to_vec();
-                            state.selection.move_cursor(delta, modifiers, &order)
-                        } {
-                            let top = index as f32 * state.row_height();
-                            let height = state.list_height.max(state.row_height());
-                            let offset = if top < state.list_offset {
-                                top
-                            } else if top + state.row_height() > state.list_offset + height {
-                                top + state.row_height() - height
-                            } else {
-                                state.list_offset
-                            };
-                            state.list_offset = offset;
-                            return Task::batch([
-                                open_selected_details(state, services),
-                                iced::widget::operation::scroll_to(
-                                    crate::widgets::book_list::id(),
-                                    iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: offset },
-                                ),
-                            ]);
-                        }
-                    } else if matches!(key, Key::Named(Named::Escape)) {
-                        clear_selection(state);
-                    } else if matches!(key, Key::Character(ref s) if s.eq_ignore_ascii_case("a"))
-                        && (modifiers.control() || modifiers.logo())
-                    {
-                        let order = state.visible_order().to_vec();
-                        state.selection.select_all(&order);
-                        return open_selected_details(state, services);
-                    }
-                }
-                _ => {}
-            }
-        }
+        Message::Keyboard(event) => return handle_keyboard(state, event, services),
         Message::ListScrolled { offset, height } => {
             state.scroll_visible = true;
             state.scroll_last = Some(std::time::Instant::now());
@@ -1446,6 +1415,278 @@ fn open_selected_details(state: &mut State, services: &dyn Services) -> Task<Mes
     covers
 }
 
+fn key_context(state: &State) -> keymap::Context {
+    use keymap::Pane;
+    let pane = if state.library_loading || state.screen == Screen::Setup {
+        Pane::Setup
+    } else {
+        match state.screen {
+            Screen::Home { .. } => Pane::Library {
+                grid: state.visible_settings().view == crate::settings::ViewMode::Grid,
+            },
+            Screen::Search => Pane::Search,
+            _ => Pane::Other,
+        }
+    };
+    keymap::Context {
+        pane,
+        overlay: state.export_prompt || state.reader_picker.open,
+        warnings: state.show_warnings,
+    }
+}
+fn handle_keyboard(
+    state: &mut State,
+    event: iced::keyboard::Event,
+    services: &dyn Services,
+) -> Task<Message> {
+    use iced::keyboard::Event;
+    match event {
+        Event::ModifiersChanged(modifiers) => state.modifiers = modifiers,
+        Event::KeyPressed {
+            key,
+            physical_key,
+            modifiers,
+            repeat,
+            ..
+        } => {
+            state.modifiers = modifiers;
+            if state.closing {
+                return Task::none();
+            }
+            let context = key_context(state);
+            if let Some(command) = keymap::resolve(&key, &physical_key, modifiers, &context) {
+                // Holding a key repeats movement only; it must not resend or toggle.
+                if repeat && !matches!(command, keymap::Command::Move { .. }) {
+                    return Task::none();
+                }
+                return run_command(state, command, services);
+            }
+        }
+        _ => {}
+    }
+    Task::none()
+}
+/// Show a short hint unless the same one is already on screen.
+fn hint(state: &mut State, message: &str) {
+    if !state.toasts.iter().any(|t| t.message == message) {
+        crate::widgets::toasts::push(state, message.to_string(), false);
+    }
+}
+fn run_command(
+    state: &mut State,
+    command: keymap::Command,
+    services: &dyn Services,
+) -> Task<Message> {
+    use keymap::Command;
+    let lists = matches!(state.screen, Screen::Home { .. } | Screen::Search);
+    match command {
+        Command::OpenSearch if state.screen == Screen::Search => {
+            iced::widget::operation::focus(search_id())
+        }
+        Command::OpenSearch => update(state, Message::Navigate(Screen::Search), services),
+        Command::ToggleSidebar => update(state, Message::ToggleSidebar, services),
+        Command::ToggleDetails => update(state, Message::ToggleDetails, services),
+        Command::Escape => escape(state, services),
+        Command::Focus { backwards: false } => iced::widget::operation::focus_next(),
+        Command::Focus { backwards: true } => iced::widget::operation::focus_previous(),
+        Command::Send => {
+            if let Some(reason) = crate::widgets::device_bar::send_blocker(state) {
+                hint(state, reason);
+                Task::none()
+            } else {
+                update(state, Message::Send, services)
+            }
+        }
+        Command::ToggleConvert => {
+            if !matches!(state.screen, Screen::Home { .. }) {
+                return Task::none();
+            }
+            if state.selection.selected.is_empty() {
+                hint(state, "Select a book first, then press C to convert it.");
+                return Task::none();
+            }
+            if state.visible_settings().details_visible {
+                state.convert_menu = !state.convert_menu;
+                return Task::none();
+            }
+            let mut settings = state.visible_settings().clone();
+            settings.details_visible = true;
+            state.convert_menu = true;
+            update(state, Message::SaveSettings(settings), services)
+        }
+        Command::SelectAll if lists => {
+            let order = order_of(
+                &state.screen,
+                &state.search_order,
+                &state.catalog,
+                &state.facet_order,
+            );
+            state.selection.select_all(order);
+            selection_changed(state, services)
+        }
+        Command::SelectAll => Task::none(),
+        Command::OpenDetails if state.screen == Screen::Search => {
+            if state.selection.selected.is_empty() {
+                return move_cursor(state, keymap::Motion::Home, false, services);
+            }
+            // Details exist only in the library: show the selection there.
+            state.search_return = None;
+            let navigate = update(
+                state,
+                Message::Navigate(Screen::Home {
+                    filter: Filter::All,
+                }),
+                services,
+            );
+            let reveal = reveal_cursor(state);
+            Task::batch([navigate, reveal, open_details_focused(state, services)])
+        }
+        Command::OpenDetails if lists => {
+            if state.selection.selected.is_empty() {
+                return move_cursor(state, keymap::Motion::Home, false, services);
+            }
+            open_details_focused(state, services)
+        }
+        Command::OpenDetails => Task::none(),
+        Command::Move { motion, extend } => move_cursor(state, motion, extend, services),
+    }
+}
+/// Show the details pane for the selection, scrolled back to the top.
+fn open_details_focused(state: &mut State, services: &dyn Services) -> Task<Message> {
+    Task::batch([
+        open_selected_details(state, services),
+        iced::widget::operation::snap_to(
+            crate::widgets::details::content_id(),
+            iced::widget::scrollable::RelativeOffset::START,
+        ),
+    ])
+}
+/// Esc closes the innermost layer: prompt, popover, menu, warning list; then
+/// leaves Search; then clears the selection.
+fn escape(state: &mut State, services: &dyn Services) -> Task<Message> {
+    if state.export_prompt {
+        return update(state, Message::CancelConvert, services);
+    }
+    if state.reader_picker.open {
+        state.reader_picker.close();
+    } else if state.convert_menu {
+        state.convert_menu = false;
+    } else if state.show_warnings {
+        state.show_warnings = false;
+    } else if state.screen == Screen::Search {
+        let back = state.search_return.take().unwrap_or(Screen::Home {
+            filter: Filter::All,
+        });
+        return update(state, Message::Navigate(back), services);
+    } else if matches!(state.screen, Screen::Home { .. }) {
+        clear_selection(state);
+    }
+    Task::none()
+}
+fn selection_changed(state: &mut State, services: &dyn Services) -> Task<Message> {
+    if matches!(state.screen, Screen::Home { .. }) {
+        open_selected_details(state, services)
+    } else {
+        load_visible_covers(state, services)
+    }
+}
+/// Whether the grid is shown, its column count, and the row height.
+fn layout_metrics(state: &State) -> (bool, usize, f32) {
+    if state.screen != Screen::Search
+        && state.visible_settings().view == crate::settings::ViewMode::Grid
+    {
+        let geometry = crate::widgets::book_grid::Geometry::for_state(state);
+        (
+            true,
+            geometry.columns(state.viewport_width),
+            geometry.row_height,
+        )
+    } else {
+        (false, 1, state.row_height())
+    }
+}
+fn move_cursor(
+    state: &mut State,
+    motion: keymap::Motion,
+    extend: bool,
+    services: &dyn Services,
+) -> Task<Message> {
+    use keymap::Motion;
+    let (grid, columns, row_height) = layout_metrics(state);
+    let page = ((state.list_height / row_height).floor() as isize).max(1) * columns as isize;
+    let step = if grid { columns as isize } else { 1 };
+    // `None`: the key means nothing in this layout (Left/Right in a list).
+    let delta = match motion {
+        Motion::Up => Some(-step),
+        Motion::Down => Some(step),
+        Motion::Left if grid => Some(-1),
+        Motion::Right if grid => Some(1),
+        Motion::PageUp => Some(-page),
+        Motion::PageDown => Some(page),
+        Motion::Home | Motion::End => Some(0),
+        Motion::Left | Motion::Right => None,
+    };
+    let Some(delta) = delta else {
+        return Task::none();
+    };
+    let modifiers = if extend {
+        iced::keyboard::Modifiers::SHIFT
+    } else {
+        iced::keyboard::Modifiers::empty()
+    };
+    let order = order_of(
+        &state.screen,
+        &state.search_order,
+        &state.catalog,
+        &state.facet_order,
+    );
+    let moved = match motion {
+        Motion::Home => state.selection.move_to(0, modifiers, order),
+        Motion::End => state
+            .selection
+            .move_to(order.len().saturating_sub(1), modifiers, order),
+        _ => state.selection.move_cursor(delta, modifiers, order),
+    };
+    let Some(index) = moved else {
+        return Task::none();
+    };
+    state.keyboard_focus = true;
+    Task::batch([
+        selection_changed(state, services),
+        scroll_to_index(state, index),
+    ])
+}
+/// Scroll just enough to bring the row or card holding `index` into view.
+fn scroll_to_index(state: &mut State, index: usize) -> Task<Message> {
+    let (_, columns, row_height) = layout_metrics(state);
+    let top = (index / columns) as f32 * row_height;
+    let height = state.list_height.max(row_height);
+    let offset = if top < state.list_offset {
+        top
+    } else if top + row_height > state.list_offset + height {
+        top + row_height - height
+    } else {
+        return Task::none();
+    };
+    state.list_offset = offset;
+    iced::widget::operation::scroll_to(
+        crate::widgets::book_list::id(),
+        iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: offset },
+    )
+}
+fn reveal_cursor(state: &mut State) -> Task<Message> {
+    let order = order_of(
+        &state.screen,
+        &state.search_order,
+        &state.catalog,
+        &state.facet_order,
+    );
+    match state.selection.cursor_index(order) {
+        Some(index) => scroll_to_index(state, index),
+        None => Task::none(),
+    }
+}
+
 fn poll(state: &mut State, services: &dyn Services) {
     for update in services.poll() {
         let id = update.view.id;
@@ -1499,6 +1740,12 @@ fn poll(state: &mut State, services: &dyn Services) {
                         state.list_offset = 0.0;
                         state.scan_warnings =
                             report.warnings.iter().map(ToString::to_string).collect();
+                        if let Some(first) = state.scan_warnings.first() {
+                            log::warn!(
+                                "Library scan finished with {} warnings; first: {first}",
+                                state.scan_warnings.len()
+                            );
+                        }
                         state.scan_status = ScanStatus::Ready;
                     }
                     Err(_) if cancelled => state.scan_status = ScanStatus::Cancelled,
@@ -1526,7 +1773,10 @@ fn poll(state: &mut State, services: &dyn Services) {
                             metadata.clone()
                         });
                     }
-                    Err(error) => state.metadata_error = Some(error.clone()),
+                    Err(error) => {
+                        log::warn!("Could not read book metadata: {error}");
+                        state.metadata_error = Some(error.clone());
+                    }
                     _ => {}
                 }
             }
@@ -1612,7 +1862,17 @@ pub fn subscription(state: &State) -> Subscription<Message> {
             iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m)) => Some(
                 Message::Keyboard(iced::keyboard::Event::ModifiersChanged(m)),
             ),
-            iced::Event::Keyboard(event) if status == iced::event::Status::Ignored => {
+            // Text fields capture typed characters and arrows; Esc still leaves Search.
+            iced::Event::Keyboard(event)
+                if status == iced::event::Status::Ignored
+                    || matches!(
+                        event,
+                        iced::keyboard::Event::KeyPressed {
+                            key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                            ..
+                        }
+                    ) =>
+            {
                 Some(Message::Keyboard(event))
             }
             iced::Event::Mouse(iced::mouse::Event::WheelScrolled { .. }) => {
@@ -3574,5 +3834,372 @@ mod tests {
         assert_eq!(state.library, Some("library".into()));
         assert!(state.setup_error.is_none());
         assert_eq!(fake.requests.lock().unwrap().len(), 1);
+    }
+    fn key_event(
+        key: iced::keyboard::Key,
+        code: iced::keyboard::key::Code,
+        modifiers: iced::keyboard::Modifiers,
+        repeat: bool,
+    ) -> Message {
+        Message::Keyboard(iced::keyboard::Event::KeyPressed {
+            modified_key: key.clone(),
+            key,
+            physical_key: iced::keyboard::key::Physical::Code(code),
+            location: iced::keyboard::Location::Standard,
+            modifiers,
+            text: None,
+            repeat,
+        })
+    }
+    fn press(state: &mut State, fake: &Fake, key: &str, code: iced::keyboard::key::Code) {
+        press_with(state, fake, key, code, iced::keyboard::Modifiers::empty());
+    }
+    fn press_with(
+        state: &mut State,
+        fake: &Fake,
+        key: &str,
+        code: iced::keyboard::key::Code,
+        modifiers: iced::keyboard::Modifiers,
+    ) {
+        let key = iced::keyboard::Key::Character(key.into());
+        step(state, key_event(key, code, modifiers, false), fake);
+    }
+    fn press_named(
+        state: &mut State,
+        fake: &Fake,
+        named: iced::keyboard::key::Named,
+        modifiers: iced::keyboard::Modifiers,
+    ) {
+        let key = iced::keyboard::Key::Named(named);
+        step(
+            state,
+            key_event(key, iced::keyboard::key::Code::Escape, modifiers, false),
+            fake,
+        );
+    }
+    fn library_state(count: u64) -> State {
+        let books: Vec<_> = (0..count)
+            .map(|id| Book {
+                id: BookId::Calibre(id),
+                author: "Author".into(),
+                title: format!("Title {id:02}"),
+                files: vec![],
+                path: format!("book{id}").into(),
+            })
+            .collect();
+        let mut state = State {
+            screen: Screen::Home {
+                filter: Filter::All,
+            },
+            library: Some("library".into()),
+            catalog: crate::catalog::Catalog::new(books),
+            scan_status: ScanStatus::Ready,
+            ..Default::default()
+        };
+        state.settings.view = crate::settings::ViewMode::List;
+        state.settings.details_visible = false;
+        state.list_height = 108.0;
+        state.viewport_width = 732.0;
+        state
+    }
+    fn selected_indices(state: &State) -> Vec<u64> {
+        state
+            .selection
+            .selected
+            .iter()
+            .map(|id| match id {
+                BookId::Calibre(n) => *n,
+                other => panic!("unexpected id {other:?}"),
+            })
+            .collect()
+    }
+    #[test]
+    fn list_keys_move_page_jump_and_extend() {
+        use iced::keyboard::{Modifiers, key::Named};
+        let fake = Fake::default();
+        let mut state = library_state(30);
+        state.list_height = state.row_height() * 3.0;
+        // Left/Right mean nothing in a list; the first Down selects the first book.
+        press_named(&mut state, &fake, Named::ArrowRight, Modifiers::empty());
+        assert!(state.selection.selected.is_empty());
+        press_named(&mut state, &fake, Named::ArrowDown, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [0]);
+        assert!(state.keyboard_focus);
+        // Details open as for any selection; a page is the three visible rows.
+        assert!(state.visible_settings().details_visible);
+        press_named(&mut state, &fake, Named::PageDown, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [3]);
+        press_named(&mut state, &fake, Named::PageDown, Modifiers::SHIFT);
+        assert_eq!(selected_indices(&state), [3, 4, 5, 6]);
+        press_named(&mut state, &fake, Named::End, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [29]);
+        assert!(state.list_offset > 0.0);
+        press_named(&mut state, &fake, Named::Home, Modifiers::SHIFT);
+        assert_eq!(selected_indices(&state).len(), 30);
+        press_named(&mut state, &fake, Named::PageUp, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [0]);
+        assert_eq!(state.list_offset, 0.0);
+        // Ctrl+A selects everything; a click drops the keyboard outline.
+        press_with(
+            &mut state,
+            &fake,
+            "a",
+            iced::keyboard::key::Code::KeyA,
+            Modifiers::CTRL,
+        );
+        assert_eq!(selected_indices(&state).len(), 30);
+        step(&mut state, Message::ResetModifiers, &fake);
+        step(&mut state, Message::BookClicked(BookId::Calibre(4)), &fake);
+        assert!(!state.keyboard_focus);
+        assert_eq!(selected_indices(&state), [4]);
+    }
+    #[test]
+    fn grid_keys_move_by_card_and_by_row() {
+        use iced::keyboard::{Modifiers, key::Named};
+        let fake = Fake::default();
+        let mut state = library_state(30);
+        state.settings.view = crate::settings::ViewMode::Grid;
+        // 732 px with 172 px cards and 12 px gaps: 3 columns.
+        let geometry = crate::widgets::book_grid::Geometry::for_state(&state);
+        assert_eq!(geometry.columns(state.viewport_width), 3);
+        state.list_height = geometry.row_height * 2.0;
+        press_named(&mut state, &fake, Named::ArrowRight, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [0]);
+        press_named(&mut state, &fake, Named::ArrowRight, Modifiers::empty());
+        press_named(&mut state, &fake, Named::ArrowDown, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [4]);
+        press_named(&mut state, &fake, Named::ArrowLeft, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [3]);
+        press_named(&mut state, &fake, Named::PageDown, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [9]);
+        press_named(&mut state, &fake, Named::ArrowUp, Modifiers::SHIFT);
+        assert_eq!(selected_indices(&state), [6, 7, 8, 9]);
+        press_named(&mut state, &fake, Named::End, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [29]);
+        assert!(state.list_offset > 0.0);
+    }
+    #[test]
+    fn slash_opens_search_and_escape_returns_to_the_same_view() {
+        let fake = Fake::default();
+        let mut state = library_state(5);
+        state.screen = Screen::Home {
+            filter: Filter::Format(Format::Epub),
+        };
+        press(&mut state, &fake, "/", iced::keyboard::key::Code::Slash);
+        assert_eq!(state.screen, Screen::Search);
+        // Already in Search: "/" only refocuses the field.
+        press(&mut state, &fake, "/", iced::keyboard::key::Code::Slash);
+        assert_eq!(state.screen, Screen::Search);
+        press_named(
+            &mut state,
+            &fake,
+            iced::keyboard::key::Named::Escape,
+            iced::keyboard::Modifiers::empty(),
+        );
+        assert_eq!(
+            state.screen,
+            Screen::Home {
+                filter: Filter::Format(Format::Epub)
+            }
+        );
+        // Without a remembered view Esc goes Home.
+        step(&mut state, Message::Navigate(Screen::Jobs), &fake);
+        step(&mut state, Message::Navigate(Screen::Search), &fake);
+        press_named(
+            &mut state,
+            &fake,
+            iced::keyboard::key::Named::Escape,
+            iced::keyboard::Modifiers::empty(),
+        );
+        assert_eq!(
+            state.screen,
+            Screen::Home {
+                filter: Filter::All
+            }
+        );
+    }
+    #[test]
+    fn escape_closes_the_innermost_layer_first() {
+        use iced::keyboard::{Modifiers, key::Named};
+        let fake = Fake::default();
+        let mut state = library_state(5);
+        step(&mut state, Message::BookClicked(BookId::Calibre(1)), &fake);
+        state.convert_menu = true;
+        state.show_warnings = true;
+        state.reader_picker.open = true;
+        state.export_prompt = true;
+        state.conversion_export = Some("export".into());
+        for expected in 0..5 {
+            press_named(&mut state, &fake, Named::Escape, Modifiers::empty());
+            assert_eq!(state.export_prompt, expected < 0, "step {expected}");
+            assert_eq!(state.reader_picker.open, expected < 1, "step {expected}");
+            assert_eq!(state.convert_menu, expected < 2, "step {expected}");
+            assert_eq!(state.show_warnings, expected < 3, "step {expected}");
+            assert_eq!(state.selection.selected.is_empty(), expected >= 4);
+        }
+        // Nothing left: a further Esc is harmless.
+        press_named(&mut state, &fake, Named::Escape, Modifiers::empty());
+        assert!(state.selection.selected.is_empty());
+    }
+    #[test]
+    fn send_key_explains_what_is_missing_and_ignores_repeats() {
+        use iced::keyboard::Modifiers;
+        let fake = Fake::default();
+        let mut state = library_state(3);
+        let t = || iced::keyboard::Key::Character("t".into());
+        step(
+            &mut state,
+            key_event(
+                t(),
+                iced::keyboard::key::Code::KeyT,
+                Modifiers::empty(),
+                false,
+            ),
+            &fake,
+        );
+        assert_eq!(state.toasts.len(), 1);
+        assert!(state.toasts[0].message.contains("Select the books to send"));
+        // The same hint is not stacked.
+        press(&mut state, &fake, "t", iced::keyboard::key::Code::KeyT);
+        assert_eq!(state.toasts.len(), 1);
+        step(&mut state, Message::BookClicked(BookId::Calibre(1)), &fake);
+        press(&mut state, &fake, "t", iced::keyboard::key::Code::KeyT);
+        assert_eq!(state.toasts.len(), 2);
+        assert!(state.toasts[1].message.contains("Connect a reader"));
+        let reader = fixture_reader("a", "a");
+        state.readers.selected_id = Some(reader.id.clone());
+        state.readers.devices.push(reader.clone());
+        // Held key: repeats are dropped, the first press sends once. Selecting
+        // the book already queued a metadata read.
+        let baseline = fake.requests.lock().unwrap().len();
+        step(
+            &mut state,
+            key_event(
+                t(),
+                iced::keyboard::key::Code::KeyT,
+                Modifiers::empty(),
+                true,
+            ),
+            &fake,
+        );
+        assert_eq!(fake.requests.lock().unwrap().len(), baseline);
+        // Cyrillic layout: the T key types "е".
+        press(&mut state, &fake, "е", iced::keyboard::key::Code::KeyT);
+        assert_eq!(fake.requests.lock().unwrap().len(), baseline + 1);
+        state.readers.devices[0].read_only = true;
+        press(&mut state, &fake, "t", iced::keyboard::key::Code::KeyT);
+        assert_eq!(fake.requests.lock().unwrap().len(), baseline + 1);
+        assert!(state.toasts.iter().any(|t| t.message.contains("read-only")));
+    }
+    #[test]
+    fn convert_key_opens_the_details_pane_and_menu() {
+        let fake = Fake::default();
+        let mut state = library_state(3);
+        press(&mut state, &fake, "c", iced::keyboard::key::Code::KeyC);
+        assert!(!state.convert_menu);
+        assert!(state.toasts[0].message.contains("Select a book"));
+        step(&mut state, Message::BookClicked(BookId::Calibre(0)), &fake);
+        state.settings.details_visible = false;
+        state.convert_menu = false;
+        press(&mut state, &fake, "c", iced::keyboard::key::Code::KeyC);
+        assert!(state.visible_settings().details_visible);
+        assert!(state.convert_menu);
+        state.settings = state.visible_settings().clone();
+        state.requested_settings = None;
+        press(&mut state, &fake, "с", iced::keyboard::key::Code::KeyC);
+        assert!(!state.convert_menu);
+        // Convert needs the details pane: not offered in Search.
+        step(&mut state, Message::Navigate(Screen::Search), &fake);
+        press(&mut state, &fake, "c", iced::keyboard::key::Code::KeyC);
+        assert!(!state.convert_menu);
+    }
+    #[test]
+    fn enter_opens_details_and_search_enter_reveals_in_library() {
+        use iced::keyboard::{Modifiers, key::Named};
+        let fake = Fake::default();
+        let mut state = library_state(40);
+        // Enter with nothing selected selects the first book and shows it.
+        press_named(&mut state, &fake, Named::Enter, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [0]);
+        assert!(state.visible_settings().details_visible);
+        // In Search, Enter on a selected result shows it in the library.
+        step(&mut state, Message::Navigate(Screen::Search), &fake);
+        state.search_order = vec![BookId::Calibre(35), BookId::Calibre(7)];
+        press_named(&mut state, &fake, Named::Enter, Modifiers::empty());
+        assert_eq!(selected_indices(&state), [35]);
+        assert_eq!(state.screen, Screen::Search);
+        press_named(&mut state, &fake, Named::Enter, Modifiers::empty());
+        assert_eq!(
+            state.screen,
+            Screen::Home {
+                filter: Filter::All
+            }
+        );
+        assert_eq!(selected_indices(&state), [35]);
+        assert!(state.list_offset > 0.0);
+        // The field's own Enter behaves the same.
+        step(&mut state, Message::Navigate(Screen::Search), &fake);
+        step(&mut state, Message::SearchSubmit, &fake);
+        assert_eq!(state.screen, Screen::Search);
+        step(&mut state, Message::SearchSubmit, &fake);
+        assert_eq!(
+            state.screen,
+            Screen::Home {
+                filter: Filter::All
+            }
+        );
+    }
+    #[test]
+    fn shortcuts_are_ignored_in_setup_overlays_and_after_close() {
+        use iced::keyboard::{Modifiers, key::Code};
+        let fake = Fake::default();
+        let mut state = State::default();
+        assert_eq!(state.screen, Screen::Setup);
+        press(&mut state, &fake, "/", Code::Slash);
+        press_with(&mut state, &fake, "b", Code::KeyB, Modifiers::CTRL);
+        assert_eq!(state.screen, Screen::Setup);
+        assert!(fake.saves.lock().unwrap().is_empty());
+        let mut state = library_state(3);
+        state.reader_picker.open = true;
+        press(&mut state, &fake, "/", Code::Slash);
+        assert_eq!(
+            state.screen,
+            Screen::Home {
+                filter: Filter::All
+            }
+        );
+        state.reader_picker.open = false;
+        step(
+            &mut state,
+            Message::Close(iced::window::Id::unique()),
+            &fake,
+        );
+        press(&mut state, &fake, "/", Code::Slash);
+        assert_ne!(state.screen, Screen::Search);
+    }
+    #[test]
+    fn ctrl_b_and_ctrl_i_toggle_panes_and_persist() {
+        use iced::keyboard::{Modifiers, key::Code};
+        let fake = Fake::default();
+        let mut state = library_state(3);
+        assert!(state.visible_settings().sidebar_visible);
+        press_with(&mut state, &fake, "b", Code::KeyB, Modifiers::CTRL);
+        assert!(!state.visible_settings().sidebar_visible);
+        assert!(!fake.saves.lock().unwrap().last().unwrap().sidebar_visible);
+        state.settings = state.visible_settings().clone();
+        state.requested_settings = None;
+        press_with(&mut state, &fake, "и", Code::KeyB, Modifiers::LOGO);
+        assert!(state.visible_settings().sidebar_visible);
+        state.settings = state.visible_settings().clone();
+        state.requested_settings = None;
+        state.settings.details_visible = true;
+        press_with(&mut state, &fake, "i", Code::KeyI, Modifiers::CTRL);
+        assert!(!state.visible_settings().details_visible);
+        // Not on Settings, which has no details pane.
+        state.settings = state.visible_settings().clone();
+        state.requested_settings = None;
+        state.screen = Screen::Settings;
+        press_with(&mut state, &fake, "i", Code::KeyI, Modifiers::CTRL);
+        assert!(!state.visible_settings().details_visible);
     }
 }
