@@ -74,7 +74,9 @@ pub fn apply(handle: &dyn iced::window::Window, on: bool) -> Result<(), String> 
     };
     set_accent(hwnd, if on { ACCENT_ACRYLIC } else { ACCENT_DISABLED })
 }
+#[cfg(target_os = "windows")]
 const ACCENT_DISABLED: u32 = 0;
+#[cfg(target_os = "windows")]
 const ACCENT_ACRYLIC: u32 = 4;
 /// `SetWindowCompositionAttribute` with an accent policy. Unlike the DWM system
 /// backdrop, this acrylic keeps blurring while the window is not focused.
