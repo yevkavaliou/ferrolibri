@@ -27,6 +27,10 @@ pub enum Focus {
 #[derive(Clone, Copy)]
 pub struct AppState {
     pub mode: RwSignal<Mode>,
+    pub metadata_generation: RwSignal<u64>,
+    pub convert_generation: RwSignal<u64>,
+    pub conversion_busy: RwSignal<bool>,
+    pub active_conversion: RwSignal<Option<crate::types::JobId>>,
     pub focus: RwSignal<Focus>,
     pub all_books: RwSignal<Vec<Book>>,
     pub search_query: RwSignal<String>,
@@ -37,8 +41,10 @@ pub struct AppState {
     pub convert_targets: RwSignal<Vec<(String, String)>>,
     pub convert_selected: RwSignal<usize>,
     pub convert_message: RwSignal<Option<Result<String, String>>>,
+    pub setup_busy: RwSignal<bool>,
     pub setup_input: RwSignal<String>,
     pub setup_error: RwSignal<String>,
+    pub notification_generation: RwSignal<u64>,
     pub notification: RwSignal<Option<Result<String, String>>>,
     pub context_menu: RwSignal<Option<ContextMenuData>>,
     pub filtered: Memo<Vec<Book>>,
@@ -67,6 +73,10 @@ impl AppState {
 
         Self {
             mode: RwSignal::new(Mode::Normal),
+            metadata_generation: RwSignal::new(0),
+            convert_generation: RwSignal::new(0),
+            conversion_busy: RwSignal::new(false),
+            active_conversion: RwSignal::new(None),
             focus: RwSignal::new(Focus::Table),
             all_books,
             search_query,
@@ -77,8 +87,10 @@ impl AppState {
             convert_targets: RwSignal::new(Vec::new()),
             convert_selected: RwSignal::new(0),
             convert_message: RwSignal::new(None),
+            setup_busy: RwSignal::new(false),
             setup_input: RwSignal::new(String::new()),
             setup_error: RwSignal::new(String::new()),
+            notification_generation: RwSignal::new(0),
             notification: RwSignal::new(None),
             context_menu: RwSignal::new(None),
             filtered,
@@ -95,9 +107,10 @@ impl AppState {
         if books.is_empty() {
             return;
         }
-        let i = self.selected_idx.get().map_or(0, |i| {
-            if i + 1 >= books.len() { 0 } else { i + 1 }
-        });
+        let i = self
+            .selected_idx
+            .get()
+            .map_or(0, |i| if i + 1 >= books.len() { 0 } else { i + 1 });
         self.selected_idx.set(Some(i));
     }
 
@@ -106,18 +119,24 @@ impl AppState {
         if books.is_empty() {
             return;
         }
-        let i = self.selected_idx.get().map_or(0, |i| {
-            if i == 0 { books.len() - 1 } else { i - 1 }
-        });
+        let i = self
+            .selected_idx
+            .get()
+            .map_or(0, |i| if i == 0 { books.len() - 1 } else { i - 1 });
         self.selected_idx.set(Some(i));
     }
 
     pub fn notify(&self, result: Result<String, String>) {
         self.notification.set(Some(result));
+        self.notification_generation.update(|n| *n += 1);
+        let generation = self.notification_generation.get_untracked();
+        let current = self.notification_generation;
         let signal = self.notification;
         wasm_bindgen_futures::spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(3000).await;
-            signal.set(None);
+            if current.get_untracked() == generation {
+                signal.set(None);
+            }
         });
     }
 

@@ -31,7 +31,12 @@ fn hint(k: &'static str, text: &'static str, on_click: impl Fn() + 'static) -> A
     .into_any()
 }
 
-fn hint_pair(k1: &'static str, k2: &'static str, text: &'static str, on_click: impl Fn() + 'static) -> AnyView {
+fn hint_pair(
+    k1: &'static str,
+    k2: &'static str,
+    text: &'static str,
+    on_click: impl Fn() + 'static,
+) -> AnyView {
     view! {
         <button class="hint-btn" on:click=move |_| on_click()>
             <kbd>{k1}</kbd>"/"<kbd>{k2}</kbd>

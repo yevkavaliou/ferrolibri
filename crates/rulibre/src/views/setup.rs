@@ -8,9 +8,8 @@ use ratatui::{
 };
 
 use rulibre_core::config;
-use rulibre_core::scanner;
 
-use crate::app::{App, Mode};
+use crate::app::App;
 
 #[derive(Default)]
 pub(crate) struct SetupState {
@@ -83,32 +82,38 @@ pub fn handle_key(app: &mut App, code: KeyCode) -> bool {
             app.setup.error.clear();
         }
         KeyCode::Enter => {
-            let path = config::sanitize_path(&app.setup.input);
-            if path.is_empty() {
-                app.setup.error = "No path provided.".to_string();
-            } else {
-                let p = std::path::Path::new(&path);
+            let path = match config::sanitize_path(&app.setup.input) {
+                Ok(path) => path,
+                Err(e) => {
+                    app.setup.error = e.to_string();
+                    return false;
+                }
+            };
+            {
+                let p = path.as_path();
                 if !p.is_dir() {
-                    app.setup.error = format!("Path does not exist: {path}");
-                } else if !config::is_calibre_library(p) {
-                    app.setup.error =
-                        "Not a valid Calibre library (missing metadata.db).".to_string();
+                    app.setup.error = format!("Path does not exist: {}", path.display());
                 } else {
+                    match config::is_calibre_library(p) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            app.setup.error =
+                                "Not a valid Calibre library (missing metadata.db).".to_string();
+                            return false;
+                        }
+                        Err(e) => {
+                            app.setup.error = e.to_string();
+                            return false;
+                        }
+                    }
                     let cfg = config::Config {
                         library_path: path.clone(),
                     };
-                    cfg.save();
-                    let books = scanner::scan_library(p);
-                    let len = books.len();
-                    app.filtered_books = books.clone();
-                    app.all_books = books;
-                    app.scrollbar_state =
-                        ratatui::widgets::ScrollbarState::new(len.saturating_sub(1));
-                    app.table_state = ratatui::widgets::TableState::default();
-                    if len > 0 {
-                        app.table_state.select(Some(0));
+                    if let Err(e) = cfg.save() {
+                        app.setup.error = e.to_string();
+                        return false;
                     }
-                    app.mode = Mode::Normal;
+                    app.start_scan(path);
                 }
             }
         }

@@ -13,7 +13,7 @@ cargo install rulibre
 rulibre
 ```
 
-This installs the **TUI** (terminal) version — a single, dependency-free binary. The GUI version is source-only (see [Build from source](#build-from-source)).
+This installs the **TUI** (terminal) version. Conversion requires external tools; browsing and sending an existing compatible file do not. The GUI version is source-only (see [Build from source](#build-from-source)). These crates.io instructions refer to the upstream release; build this checkout to use the core changes documented below.
 
 On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
 
@@ -35,7 +35,7 @@ cargo uninstall rulibre
 
 ## What gets scanned
 
-The scanner walks `{library}/{author}/{title (id)}/` directories and picks up book files by extension (EPUB, KEPUB, CBZ, PDF, etc.).
+The scanner walks `{library}/{author}/{title (id)}/` directories and recognizes AZW3, DOCX, EPUB, KEPUB, MOBI, PDF and TXT. Extensions are case-insensitive; `.kepub.epub` is distinct from EPUB. Unknown formats (including CBZ), covers, OPF and temporary files are not book inputs. Each book has a stable ID and an ordered list of exact file paths.
 
 Excluded from scanning:
 - `.caltrash/`, `.calnotes/`, `.DS_Store`, `downloaded/` (Calibre internal)
@@ -46,9 +46,33 @@ Excluded from scanning:
 Press `c` on a selected book to convert it to another format. Conversion options are shown based on which tools are installed:
 
 - **kepubify** — used for EPUB → KEPUB conversion. Install from [pgaskin.net/kepubify](https://pgaskin.net/kepubify/)
-- **ebook-convert** (Calibre) — used for all other conversions (EPUB, PDF, MOBI, AZW3, KEPUB, DOCX, TXT). Included with [Calibre](https://calibre-ebook.com/)
+- **ebook-convert** (Calibre) — used for other supported routes. KEPUB output is offered only when the installed tool's capability probe succeeds. Included with [Calibre](https://calibre-ebook.com/)
 
 Only formats you don't already have are offered. If neither tool is installed, the convert dialog will let you know.
+
+The Calibre library is read-only: Rulibre never imports conversions into it or changes `metadata.db`, OPF, covers or source books. Conversion results live in a separate temporary workspace owned by the application; retain/export them before exiting if needed. Explicit core output directories must be outside the library. Existing output files produce a conflict error.
+
+## Readers and core API
+
+Detection enumerates mounted local filesystems on Windows, Linux and macOS and checks reader signatures. A volume label or a `documents` directory alone does not identify a reader. Kobo prefers existing KEPUB, then EPUB; Kindle prefers AZW3, then MOBI and can prepare AZW3 using Calibre. MTP and network storage are unsupported.
+
+The core supports explicit selection by device ID and `device::manual_device(path, kind)` for a validated mount root. Existing clients automatically select a single recognized reader; they do not yet expose a manual selection screen. Multiple readers without a prior selection require explicit selection through the core API.
+
+Transfers copy into a temporary file on the destination and publish without overwriting. Cancellation and write failures are reported; if disconnection prevents cleanup, the error includes the partial file path. Root mount points are never recreated.
+
+Core operations return typed `Error`/`ErrorKind`; scans separate root errors from per-book warnings. Missing OPF uses directory metadata, while corrupt OPF is an error. `JobExecutor` runs scans, metadata, conversion and transfers on bounded worker threads, exposes job IDs, states and events, and supports cancellation. Copy progress reports bytes; converter progress reports stages. Shutdown cancels work and joins workers, but may wait for an uninterruptible OS call.
+
+API contracts: [formats](docs/BOOK_FORMATS.md), [configuration](docs/CONFIG_PATHS.md), [metadata](docs/METADATA.md), [read-only library](docs/LIBRARY_READ_ONLY.md), [conversion](docs/CONVERSION.md), [devices and manual selection](docs/DEVICE_DETECTION.md), [preparation](docs/READER_PREPARATION.md), [safe transfer](docs/SAFE_TRANSFER.md), [errors](docs/CORE_ERRORS.md), [jobs](docs/BACKGROUND_JOBS.md), [client integration](docs/CLIENT_INTEGRATION.md).
+
+## Verification
+
+With Rust 1.93.1, the WASM target and native Tauri build dependencies installed:
+
+```powershell
+pwsh -File scripts/check-readiness.ps1 -WasmIpc
+```
+
+`-WasmIpc` requires Node.js and `wasm-bindgen-cli` 0.2.108 (matching Cargo.lock). `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion. Core/TUI tests, strict Clippy, host tests, WASM checks and native volume enumeration run in the Windows/Linux/macOS CI matrix. Host checks use temporary build resources; they do not verify GUI packaging or a running WebView. See the [final readiness report](docs/READINESS.md) for actual results and unverified hardware/platform limitations.
 
 ## Build from source
 

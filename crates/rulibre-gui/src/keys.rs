@@ -3,8 +3,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlElement, KeyboardEvent};
 
-use crate::state::{AppState, Focus, Mode};
 use crate::ipc;
+use crate::state::{AppState, Focus, Mode};
 use crate::types::Metadata;
 
 /// Returns true if the key event originated from a text input — in which case
@@ -97,6 +97,16 @@ fn detail(state: AppState, key: &str, ev: &KeyboardEvent) {
 fn convert(state: AppState, key: &str, ev: &KeyboardEvent) {
     match key {
         "Escape" | "q" => {
+            state.convert_generation.update(|n| *n += 1);
+            state.conversion_busy.set(false);
+            if let Some(id) = state.active_conversion.get_untracked() {
+                state.active_conversion.set(None);
+                spawn_local(async move {
+                    if let Err(error) = ipc::cancel_job(id).await {
+                        state.notify(Err(error));
+                    }
+                });
+            }
             state.mode.set(Mode::Normal);
             state.convert_targets.set(Vec::new());
             state.convert_message.set(None);
@@ -128,28 +138,42 @@ fn setup_global(_state: AppState, _key: &str, _ev: &KeyboardEvent) {
 }
 
 pub fn open_detail(state: AppState) {
-    let Some(book) = state.selected_book() else {
+    if state.selected_book().is_none() {
         return;
-    };
+    }
     state.mode.set(Mode::Detail);
     state.focus.set(Focus::Table);
-    spawn_local(async move {
-        let meta = ipc::parse_metadata(book.path).await;
-        state.detail.set(meta.or(Some(Metadata::default())));
-    });
+    refresh_detail(state);
 }
 
 pub fn refresh_detail(state: AppState) {
+    state.metadata_generation.update(|n| *n += 1);
+    let generation = state.metadata_generation.get_untracked();
+    state.detail.set(None);
     let Some(book) = state.selected_book() else {
         return;
     };
     spawn_local(async move {
-        let meta = ipc::parse_metadata(book.path).await;
-        state.detail.set(meta.or(Some(Metadata::default())));
+        let result = ipc::parse_metadata(book.path).await;
+        let selected = state.selected_book();
+        if !crate::response_guard::accepts(
+            generation,
+            state.metadata_generation.get_untracked(),
+            &book.id,
+            selected.as_ref().map(|b| &b.id),
+            state.mode.get_untracked() == Mode::Detail,
+        ) {
+            return;
+        }
+        match result {
+            Ok(meta) => state.detail.set(meta.or(Some(Metadata::default()))),
+            Err(error) => state.notify(Err(error)),
+        }
     });
 }
 
 pub fn close_detail(state: AppState) {
+    state.metadata_generation.update(|n| *n += 1);
     state.mode.set(Mode::Normal);
     state.focus.set(Focus::Table);
     state.detail.set(None);
@@ -159,18 +183,57 @@ pub fn enter_convert(state: AppState) {
     let Some(book) = state.selected_book() else {
         return;
     };
+    state.convert_generation.update(|n| *n += 1);
+    let generation = state.convert_generation.get_untracked();
+    state.convert_targets.set(Vec::new());
+    state.convert_message.set(None);
+    state.mode.set(Mode::Convert);
     spawn_local(async move {
-        let (k, c) = ipc::available_backends().await;
+        let backends = match ipc::available_backends().await {
+            Ok(value) => value,
+            Err(error) => {
+                state.notify(Err(error));
+                return;
+            }
+        };
+        if generation != state.convert_generation.get_untracked()
+            || state.selected_book().as_ref().map(|b| &b.id) != Some(&book.id)
+            || state.mode.get_untracked() != Mode::Convert
+        {
+            return;
+        }
+        let k = backends.iter().any(|b| {
+            b.kind == crate::types::BackendKind::Kepubify
+                && b.status == crate::types::BackendStatus::Ready
+        });
+        let c = backends.iter().any(|b| {
+            b.kind == crate::types::BackendKind::EbookConvert
+                && b.status == crate::types::BackendStatus::Ready
+        });
         state.backends.set((k, c));
         if !k && !c {
             state.convert_targets.set(Vec::new());
-            state.convert_message.set(Some(Err(
-                "No conversion tools found (install kepubify or calibre's ebook-convert)".into(),
-            )));
+            state.convert_message.set(Some(Err(backends
+                .iter()
+                .map(|b| format!("{}: {}", b.kind.program(), b.diagnostic))
+                .collect::<Vec<_>>()
+                .join("; "))));
             state.mode.set(Mode::Convert);
             return;
         }
-        let targets = ipc::target_formats(book.formats.clone(), k, c).await;
+        let targets = match ipc::target_formats(book.files.clone(), backends).await {
+            Ok(value) => value,
+            Err(error) => {
+                state.notify(Err(error));
+                return;
+            }
+        };
+        if generation != state.convert_generation.get_untracked()
+            || state.selected_book().as_ref().map(|b| &b.id) != Some(&book.id)
+            || state.mode.get_untracked() != Mode::Convert
+        {
+            return;
+        }
         if targets.is_empty() {
             state.convert_targets.set(Vec::new());
             state
@@ -187,34 +250,73 @@ pub fn enter_convert(state: AppState) {
 }
 
 pub fn run_convert(state: AppState) {
-    let targets = state.convert_targets.get();
-    if targets.is_empty() {
+    if state.conversion_busy.get_untracked() {
         return;
     }
+    let targets = state.convert_targets.get();
+    let Some((target, _)) = targets.get(state.convert_selected.get()).cloned() else {
+        return;
+    };
     let Some(book) = state.selected_book() else {
         return;
     };
-    let (target, _tool) = targets[state.convert_selected.get()].clone();
-    let book_path = book.path.clone();
+    state.convert_generation.update(|n| *n += 1);
+    let generation = state.convert_generation.get_untracked();
+    state.conversion_busy.set(true);
+    state
+        .convert_message
+        .set(Some(Ok("Waiting for conversion".into())));
     spawn_local(async move {
-        match ipc::convert_book(book_path.clone(), target).await {
-            Ok(ok) => {
-                state.all_books.update(|books| {
-                    for b in books.iter_mut() {
-                        if b.path == book_path {
-                            b.formats = ok.new_formats.clone();
+        let result = ipc::convert_book(
+            book.path,
+            book.files,
+            target,
+            move |id| {
+                if generation == state.convert_generation.get_untracked() {
+                    state.active_conversion.set(Some(id));
+                } else {
+                    spawn_local(async move {
+                        if let Err(error) = ipc::cancel_job(id).await {
+                            state.notify(Err(error));
                         }
+                    });
+                }
+            },
+            move |event| {
+                if generation == state.convert_generation.get_untracked() {
+                    if let crate::types::JobEvent::Stage { stage, .. } = event {
+                        state.convert_message.set(Some(Ok(format!("{stage:?}"))));
                     }
-                });
-                state.convert_message.set(Some(Ok(ok.message.clone())));
+                }
+            },
+        )
+        .await;
+        if generation != state.convert_generation.get_untracked() {
+            return;
+        }
+        state.conversion_busy.set(false);
+        state.active_conversion.set(None);
+        let selected = state.selected_book();
+        let applies = crate::response_guard::accepts(
+            generation,
+            state.convert_generation.get_untracked(),
+            &book.id,
+            selected.as_ref().map(|b| &b.id),
+            state.mode.get_untracked() == Mode::Convert,
+        );
+        let message = result.map(|ok| ok.message);
+        if applies {
+            state.convert_message.set(Some(message.clone()));
+            if message.is_ok() {
                 state.convert_targets.set(Vec::new());
                 state.mode.set(Mode::Normal);
-                state.notify(Ok(ok.message));
-            }
-            Err(err) => {
-                state.convert_message.set(Some(Err(err)));
             }
         }
+        state.notify(
+            message
+                .map(|message| format!("{}: {message}", book.title))
+                .map_err(|error| format!("{}: {error}", book.title)),
+        );
     });
 }
 
@@ -223,7 +325,19 @@ pub fn send_to_device(state: AppState) {
         return;
     };
     spawn_local(async move {
-        let result = ipc::send_to_device(book.path, book.author).await;
-        state.notify(result);
+        let result = ipc::send_to_device(book.path, book.author, move |event| {
+            if let crate::types::JobEvent::CopyProgress {
+                completed, total, ..
+            } = event
+            {
+                state.notify(Ok(format!("Copied {completed}/{total} bytes")));
+            }
+        })
+        .await;
+        state.notify(
+            result
+                .map(|message| format!("{}: {message}", book.title))
+                .map_err(|error| format!("{}: {error}", book.title)),
+        );
     });
 }

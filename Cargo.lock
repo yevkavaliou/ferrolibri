@@ -3887,9 +3887,13 @@ name = "rulibre-core"
 version = "0.1.2"
 dependencies = [
  "dirs",
+ "kuchikiki",
+ "libc",
  "roxmltree",
  "serde",
+ "serde_json",
  "toml 1.0.3+spec-1.1.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

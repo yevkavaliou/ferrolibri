@@ -11,8 +11,20 @@ use ratatui::{
 
 use rulibre_core::config;
 use rulibre_core::device::{DeviceEvent, DeviceState};
-use rulibre_core::metadata;
-use rulibre_core::scanner::{self, Book};
+use rulibre_core::jobs::{JobEvent, JobExecutor, JobHandle, JobOutput, JobRequest};
+use rulibre_core::scanner::Book;
+
+pub(crate) enum PendingKind {
+    Scan,
+    Metadata(Book, u64),
+    Backends(Book),
+    Convert(Book, rulibre_core::converter::Workspace),
+    Send(Book),
+}
+pub(crate) struct PendingJob {
+    pub handle: JobHandle,
+    pub kind: PendingKind,
+}
 
 use super::views;
 use super::views::convert::ConvertState;
@@ -36,6 +48,9 @@ pub(crate) enum Focus {
 }
 
 pub struct App {
+    pub(crate) jobs: JobExecutor,
+    pub(crate) pending: Vec<PendingJob>,
+    metadata_generation: u64,
     pub(crate) all_books: Vec<Book>,
     pub(crate) filtered_books: Vec<Book>,
     pub(crate) table_state: TableState,
@@ -52,46 +67,195 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(cfg: Option<config::Config>) -> Self {
-        match cfg {
-            Some(cfg) if config::is_calibre_library(std::path::Path::new(&cfg.library_path)) => {
-                let books = scanner::scan_library(std::path::Path::new(&cfg.library_path));
-                let len = books.len();
-                let mut table_state = TableState::default();
-                if !books.is_empty() {
-                    table_state.select(Some(0));
-                }
-                Self {
-                    filtered_books: books.clone(),
-                    all_books: books,
-                    table_state,
-                    scrollbar_state: ScrollbarState::new(len.saturating_sub(1)),
-                    mode: Mode::Normal,
-                    search_query: String::new(),
-                    focus: Focus::Table,
-                    table_area: Rect::default(),
-                    setup: SetupState::default(),
-                    detail: DetailState::default(),
-                    convert: ConvertState::default(),
-                    notification: NotificationState::default(),
-                    device: DeviceState::default(),
+    pub fn new(cfg: Option<config::Config>) -> Result<Self, rulibre_core::Error> {
+        let mut app = Self {
+            jobs: JobExecutor::new(2, 16).map_err(|e| {
+                rulibre_core::Error::io("start workers", std::path::Path::new("."), e)
+            })?,
+            pending: Vec::new(),
+            metadata_generation: 0,
+            all_books: Vec::new(),
+            filtered_books: Vec::new(),
+            table_state: TableState::default(),
+            scrollbar_state: ScrollbarState::new(0),
+            mode: Mode::Setup,
+            search_query: String::new(),
+            focus: Focus::Table,
+            table_area: Rect::default(),
+            setup: SetupState::default(),
+            detail: DetailState::default(),
+            convert: ConvertState::default(),
+            notification: NotificationState::default(),
+            device: DeviceState::default(),
+        };
+        if let Some(cfg) = cfg
+            && config::is_calibre_library(&cfg.library_path)?
+        {
+            app.start_scan(cfg.library_path);
+        }
+        Ok(app)
+    }
+
+    pub(crate) fn start_scan(&mut self, library: std::path::PathBuf) {
+        if self
+            .pending
+            .iter()
+            .any(|job| matches!(job.kind, PendingKind::Scan))
+        {
+            return;
+        }
+        match self.jobs.submit(JobRequest::Scan { library }) {
+            Ok(handle) => {
+                self.pending.push(PendingJob {
+                    handle,
+                    kind: PendingKind::Scan,
+                });
+                self.setup.error = "Scanning library…".into();
+            }
+            Err(error) => self.setup.error = format!("{error:?}"),
+        }
+    }
+
+    pub(crate) fn poll_jobs(&mut self) {
+        let mut index = 0;
+        while index < self.pending.len() {
+            for event in self.pending[index].handle.events.try_iter() {
+                let message = match event {
+                    JobEvent::Stage { stage, .. } => Some(format!("{stage:?}")),
+                    JobEvent::CopyProgress {
+                        completed, total, ..
+                    } => Some(format!("Copied {completed}/{total} bytes")),
+                    _ => None,
+                };
+                if let Some(message) = message {
+                    self.notification.set(Ok(message));
                 }
             }
-            _ => Self {
-                all_books: Vec::new(),
-                filtered_books: Vec::new(),
-                table_state: TableState::default(),
-                scrollbar_state: ScrollbarState::new(0),
-                mode: Mode::Setup,
-                search_query: String::new(),
-                focus: Focus::Table,
-                table_area: Rect::default(),
-                setup: SetupState::default(),
-                detail: DetailState::default(),
-                convert: ConvertState::default(),
-                notification: NotificationState::default(),
-                device: DeviceState::default(),
-            },
+            let result = match self.pending[index].handle.try_result() {
+                Ok(result) => result.map_err(|e| e.to_string()),
+                Err(mpsc::TryRecvError::Empty) => {
+                    index += 1;
+                    continue;
+                }
+                Err(_) => Err("Job worker disconnected".into()),
+            };
+            let job = self.pending.remove(index);
+            match job.kind {
+                PendingKind::Scan => match result {
+                    Ok(JobOutput::Scan(report)) => {
+                        if !report.warnings.is_empty() {
+                            self.notification.set(Err(report
+                                .warnings
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect::<Vec<_>>()
+                                .join("; ")));
+                        }
+                        self.all_books = report.books;
+                        self.apply_filter();
+                        self.setup.error.clear();
+                        self.mode = Mode::Normal;
+                    }
+                    Err(error) => {
+                        self.setup.error = error;
+                        self.mode = Mode::Setup;
+                    }
+                    _ => self.setup.error = "Unexpected scan result".into(),
+                },
+                PendingKind::Metadata(book, generation) => {
+                    let selected = self
+                        .table_state
+                        .selected()
+                        .and_then(|i| self.filtered_books.get(i));
+                    if generation != self.metadata_generation
+                        || selected.map(|b| &b.id) != Some(&book.id)
+                        || self.mode != Mode::Detail
+                    {
+                        continue;
+                    }
+                    match result {
+                        Ok(JobOutput::Metadata(meta)) => self.detail.metadata = Some(meta),
+                        Err(error) => self.notification.set(Err(error)),
+                        _ => self
+                            .notification
+                            .set(Err("Unexpected metadata result".into())),
+                    }
+                }
+                PendingKind::Backends(book) => {
+                    let selected = self
+                        .table_state
+                        .selected()
+                        .and_then(|i| self.filtered_books.get(i));
+                    if self.convert.selection_job != Some(job.handle.id)
+                        || self.mode != Mode::Convert
+                        || selected.map(|b| &b.id) != Some(&book.id)
+                    {
+                        continue;
+                    }
+                    match result {
+                        Ok(JobOutput::Backends(backends)) => {
+                            self.convert.targets =
+                                rulibre_core::converter::target_formats(&book.files, &backends)
+                                    .into_iter()
+                                    .map(|(format, tool)| (format.label().to_owned(), tool))
+                                    .collect();
+                            self.convert.message = if self.convert.targets.is_empty() {
+                                Some(Err(backends
+                                    .iter()
+                                    .map(|b| format!("{}: {}", b.kind.program(), b.diagnostic))
+                                    .collect::<Vec<_>>()
+                                    .join("; ")))
+                            } else {
+                                None
+                            };
+                        }
+                        Err(error) => self.convert.message = Some(Err(error)),
+                        _ => self.convert.message = Some(Err("Unexpected backend result".into())),
+                    }
+                }
+                PendingKind::Convert(book, workspace) => {
+                    let message = match result {
+                        Ok(JobOutput::Conversion(result)) => {
+                            self.convert.workspaces.push(workspace);
+                            Ok(format!(
+                                "Temporary result: {} (removed on exit)",
+                                result.output_path.display()
+                            ))
+                        }
+                        Err(error) => Err(error),
+                        _ => Err("Unexpected conversion result".into()),
+                    };
+                    let selected = self
+                        .table_state
+                        .selected()
+                        .and_then(|i| self.filtered_books.get(i));
+                    if self.convert.active == Some(job.handle.id)
+                        && self.mode == Mode::Convert
+                        && selected.map(|b| &b.id) == Some(&book.id)
+                    {
+                        self.convert.message = Some(message.clone());
+                        if message.is_ok() {
+                            self.convert.targets.clear();
+                            self.mode = Mode::Normal;
+                        }
+                    }
+                    if self.convert.active == Some(job.handle.id) {
+                        self.convert.active = None;
+                    }
+                    self.notification.set(
+                        message
+                            .map(|m| format!("{}: {m}", book.title))
+                            .map_err(|e| format!("{}: {e}", book.title)),
+                    );
+                }
+                PendingKind::Send(book) => self.notification.set(match result {
+                    Ok(JobOutput::Sent(path)) => {
+                        Ok(format!("{}: Sent to {}", book.title, path.display()))
+                    }
+                    Err(error) => Err(format!("{}: {error}", book.title)),
+                    _ => Err("Unexpected transfer result".into()),
+                }),
+            }
         }
     }
 
@@ -101,12 +265,13 @@ impl App {
         device_rx: mpsc::Receiver<DeviceEvent>,
     ) -> io::Result<()> {
         loop {
+            self.poll_jobs();
             terminal.draw(|frame| self.draw(frame))?;
 
             // Process device events from background thread
             while let Ok(ev) = device_rx.try_recv() {
                 let msg = self.device.handle_event(ev);
-                self.notification.set(Ok(msg));
+                self.notification.set(msg);
             }
 
             // Tick notification auto-clear (~3s at 250ms poll)
@@ -171,7 +336,23 @@ impl App {
         let Some(book) = self.filtered_books.get(idx) else {
             return;
         };
-        self.detail.metadata = metadata::parse_opf(&book.path);
+        let book = book.clone();
+        self.metadata_generation += 1;
+        self.detail.metadata = None;
+        for job in &self.pending {
+            if matches!(job.kind, PendingKind::Metadata(..)) {
+                job.handle.cancel();
+            }
+        }
+        match self.jobs.submit(JobRequest::Metadata {
+            book: book.path.clone(),
+        }) {
+            Ok(handle) => self.pending.push(PendingJob {
+                handle,
+                kind: PendingKind::Metadata(book, self.metadata_generation),
+            }),
+            Err(error) => self.notification.set(Err(format!("{error:?}"))),
+        }
         self.detail.scroll = 0;
         self.mode = Mode::Detail;
     }
@@ -187,8 +368,23 @@ impl App {
         let Some(book) = self.filtered_books.get(idx) else {
             return;
         };
-        let result = self.device.send_book(&book.path.clone(), &book.author);
-        self.notification.set(result);
+        let book = book.clone();
+        let Some(device) = self.device.connected.clone() else {
+            self.notification.set(Err("No device connected".into()));
+            return;
+        };
+        match self.jobs.submit(JobRequest::Send {
+            book: book.path.clone(),
+            author: book.author.clone(),
+            device,
+            options: Default::default(),
+        }) {
+            Ok(handle) => self.pending.push(PendingJob {
+                handle,
+                kind: PendingKind::Send(book),
+            }),
+            Err(error) => self.notification.set(Err(format!("{error:?}"))),
+        }
     }
 
     fn handle_click(&mut self, col: u16, row: u16) {
@@ -249,7 +445,7 @@ impl App {
                 .filter(|b| {
                     b.author.to_lowercase().contains(&query)
                         || b.title.to_lowercase().contains(&query)
-                        || b.formats.to_lowercase().contains(&query)
+                        || formats_label(b).to_lowercase().contains(&query)
                 })
                 .cloned()
                 .collect();
@@ -320,5 +516,84 @@ impl App {
 
         views::table::draw_status_bar(self, frame, chunks[1]);
         views::notification::draw(self, frame);
+    }
+}
+
+pub(crate) fn formats_label(book: &rulibre_core::book::Book) -> String {
+    book.files
+        .iter()
+        .map(|f| f.format)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|f| f.label())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(test)]
+#[path = "../../rulibre-core/src/test_support.rs"]
+mod fixtures;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn drain(app: &mut App) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !app.pending.is_empty() {
+            app.poll_jobs();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    #[test]
+    fn initial_scan_is_queued_and_completion_populates_table() {
+        let fixture = fixtures::Fixture::new();
+        let mut app = App::new(Some(config::Config {
+            library_path: fixture.library.clone(),
+        }))
+        .unwrap();
+        assert!(app.all_books.is_empty());
+        assert_eq!(app.pending.len(), 1);
+        drain(&mut app);
+        assert_eq!(app.all_books.len(), 2);
+        assert!(app.mode == Mode::Normal);
+    }
+    #[test]
+    fn changing_selection_ignores_old_metadata_including_return_to_same_book() {
+        let fixture = fixtures::Fixture::new();
+        let mut app = App::new(Some(config::Config {
+            library_path: fixture.library.clone(),
+        }))
+        .unwrap();
+        drain(&mut app);
+        app.table_state.select(Some(0));
+        app.open_detail();
+        app.table_state.select(Some(1));
+        app.open_detail();
+        drain(&mut app);
+        assert_eq!(
+            app.detail.metadata.as_ref().unwrap().title,
+            app.filtered_books[1].title
+        );
+        app.table_state.select(Some(0));
+        app.open_detail();
+        app.table_state.select(Some(1));
+        app.open_detail();
+        app.table_state.select(Some(0));
+        app.open_detail();
+        drain(&mut app);
+        assert_eq!(
+            app.detail.metadata.as_ref().unwrap().title,
+            app.filtered_books[0].title
+        );
+    }
+    #[test]
+    fn scan_failure_returns_to_setup_with_error() {
+        let fixture = fixtures::Fixture::new();
+        let mut app = App::new(None).unwrap();
+        app.start_scan(fixture.root.join("missing"));
+        drain(&mut app);
+        assert!(app.mode == Mode::Setup);
+        assert!(!app.setup.error.is_empty());
     }
 }

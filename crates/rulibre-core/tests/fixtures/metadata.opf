@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>A small book</dc:title>
+    <dc:creator>Автор Example</dc:creator>
+    <dc:creator>Second Author</dc:creator>
+    <dc:publisher>Fixture Press</dc:publisher>
+    <dc:date>2020-01-02T00:00:00Z</dc:date>
+    <dc:language>en</dc:language>
+    <dc:subject>Testing</dc:subject>
+    <dc:description>&lt;p&gt;Small &amp;amp; synthetic.&lt;/p&gt;</dc:description>
+    <dc:identifier opf:scheme="ISBN">9780000000000</dc:identifier>
+    <meta name="calibre:series" content="Fixture series"/>
+    <meta name="calibre:series_index" content="1"/>
+  </metadata>
+</package>

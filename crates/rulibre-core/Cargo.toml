@@ -13,6 +13,16 @@ serde = { workspace = true }
 toml = { workspace = true }
 dirs = { workspace = true }
 roxmltree = { workspace = true }
+kuchikiki = "=0.8.8-speedreader"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.182"
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [[bin]]
 name = "scan_metadata"

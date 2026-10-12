@@ -9,7 +9,9 @@ pub fn ContextMenu() -> impl IntoView {
 
     let visible = move || state.context_menu.get().is_some();
     let menu_style = move || {
-        state.context_menu.get()
+        state
+            .context_menu
+            .get()
             .map(|m| format!("left:{}px;top:{}px", m.x, m.y))
             .unwrap_or_default()
     };

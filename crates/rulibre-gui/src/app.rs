@@ -10,10 +10,9 @@ use crate::components::notification::Notification;
 use crate::components::setup::Setup;
 use crate::components::status_bar::StatusBar;
 use crate::components::table::BookTable;
+use crate::ipc;
 use crate::keys::handle_global_keydown;
 use crate::state::{AppState, Mode};
-use crate::ipc;
-use crate::types::DeviceEvent;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -51,20 +50,38 @@ pub fn App() -> impl IntoView {
 fn bootstrap(state: AppState) {
     spawn_local(async move {
         match ipc::load_config().await {
-            Some(config) => {
-                let books = ipc::scan_library(config.library_path).await;
+            Ok(Some(config)) => {
+                let report = match ipc::scan_library(config.library_path).await {
+                    Ok(report) => report,
+                    Err(e) => {
+                        state.setup_error.set(e);
+                        state.mode.set(Mode::Setup);
+                        return;
+                    }
+                };
+                if !report.warnings.is_empty() {
+                    state.notify(Err(report.warnings.join("; ")));
+                }
+                let books = report.books;
                 let has_books = !books.is_empty();
                 state.all_books.set(books);
-                state.selected_idx.set(if has_books { Some(0) } else { None });
+                state
+                    .selected_idx
+                    .set(if has_books { Some(0) } else { None });
                 state.mode.set(Mode::Normal);
             }
-            None => {
+            Err(e) => {
+                state.setup_error.set(e);
+                state.mode.set(Mode::Setup);
+            }
+            Ok(None) => {
                 state.mode.set(Mode::Setup);
             }
         }
 
-        if let Some(device) = ipc::current_device().await {
-            state.device.set(Some(device));
+        match ipc::current_device().await {
+            Ok(device) => state.device.set(device),
+            Err(error) => state.notify(Err(error)),
         }
     });
 }
@@ -84,14 +101,10 @@ fn install_global_keydown(state: AppState) {
 
 fn install_device_listener(state: AppState) {
     ipc::listen_device_events(move |event| match event {
-        DeviceEvent::Connected(device) => {
-            let name = device.name().to_string();
-            state.device.set(Some(device));
-            state.notify(Ok(format!("{name} connected")));
+        Ok(event) => {
+            state.device.set(event.selected_device().cloned());
+            state.notify(event.message());
         }
-        DeviceEvent::Disconnected => {
-            state.device.set(None);
-            state.notify(Ok("Device disconnected".into()));
-        }
+        Err(error) => state.notify(Err(error)),
     });
 }

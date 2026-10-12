@@ -46,9 +46,19 @@ fn ConvertList() -> impl IntoView {
 fn convert_row(state: AppState, item: (usize, (String, String))) -> impl IntoView {
     let (i, (fmt, tool)) = item;
     let row_class = move || {
-        if state.convert_selected.get() == i { "convert-row selected" } else { "convert-row" }
+        if state.convert_selected.get() == i {
+            "convert-row selected"
+        } else {
+            "convert-row"
+        }
     };
-    let marker = move || if state.convert_selected.get() == i { "▶" } else { " " };
+    let marker = move || {
+        if state.convert_selected.get() == i {
+            "▶"
+        } else {
+            " "
+        }
+    };
     let on_click = move |_| state.convert_selected.set(i);
     view! {
         <li class=row_class on:click=on_click>

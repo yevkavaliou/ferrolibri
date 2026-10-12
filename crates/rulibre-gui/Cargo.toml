@@ -10,6 +10,9 @@ description.workspace = true
 publish = false
 build = "build.rs"
 
+[features]
+ipc-smoke = []
+
 [[bin]]
 name = "rulibre-gui"
 path = "src/main.rs"
@@ -35,7 +38,7 @@ gloo-timers = { version = "0.3", features = ["futures"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Document", "HtmlElement", "HtmlInputElement", "KeyboardEvent", "Event", "EventTarget"]
+features = ["Window", "Document", "HtmlElement", "HtmlInputElement", "KeyboardEvent", "Event", "EventTarget", "console"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -15,20 +15,38 @@ fn main() {
         process::exit(1);
     }
 
-    let books = scanner::scan_library(library_path);
+    let report = match scanner::scan_library(library_path) {
+        Ok(report) => report,
+        Err(e) => {
+            eprintln!("{e}");
+            process::exit(1);
+        }
+    };
+    for warning in &report.warnings {
+        eprintln!("[WARNING] {warning}");
+    }
+    let books = report.books;
     println!("Found {} books\n", books.len());
 
     let mut all_unrecognized = BTreeSet::new();
     let mut books_with_issues = 0;
 
     for book in &books {
-        let Some(meta) = metadata::parse_opf(&book.path) else {
-            println!(
-                "[MISSING] {} — {} (no metadata.opf)",
-                book.author, book.title
-            );
-            books_with_issues += 1;
-            continue;
+        let meta = match metadata::parse_opf(&book.path) {
+            Ok(Some(meta)) => meta,
+            Err(e) => {
+                eprintln!("[ERROR] {e}");
+                books_with_issues += 1;
+                continue;
+            }
+            Ok(None) => {
+                println!(
+                    "[MISSING] {} — {} (no metadata.opf)",
+                    book.author, book.title
+                );
+                books_with_issues += 1;
+                continue;
+            }
         };
 
         if !meta.unrecognized.is_empty() {

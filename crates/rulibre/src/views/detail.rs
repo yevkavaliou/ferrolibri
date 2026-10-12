@@ -11,20 +11,11 @@ use rulibre_core::metadata::Metadata;
 
 use crate::app::{App, Focus, Mode};
 
+#[derive(Default)]
 pub(crate) struct DetailState {
     pub(crate) metadata: Option<Metadata>,
     pub(crate) scroll: u16,
     pub(crate) area: Rect,
-}
-
-impl Default for DetailState {
-    fn default() -> Self {
-        Self {
-            metadata: None,
-            scroll: 0,
-            area: Rect::default(),
-        }
-    }
 }
 
 pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -75,7 +66,7 @@ pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
     {
         lines.push(Line::from(vec![
             Span::styled("Formats:  ", key_style),
-            Span::raw(&book.formats),
+            Span::raw(crate::app::formats_label(book)),
         ]));
     }
 
@@ -141,7 +132,7 @@ pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
         lines.push(Line::from(Span::styled("Description", section_style)));
         lines.push(Line::from(""));
         // Word-wrap will be handled by Paragraph + Wrap
-        lines.push(Line::from(Span::raw(&meta.description)));
+        lines.extend(meta.description.lines().map(Line::from));
     }
 
     // ── Unknown Metadata section (debug only) ──

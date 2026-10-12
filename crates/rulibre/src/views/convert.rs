@@ -10,22 +10,17 @@ use ratatui::{
 use rulibre_core::converter;
 use rulibre_core::scanner;
 
-use crate::app::{App, Mode};
+use crate::app::{App, Mode, PendingJob, PendingKind};
+use rulibre_core::jobs::JobRequest;
 
+#[derive(Default)]
 pub(crate) struct ConvertState {
+    pub(crate) selection_job: Option<rulibre_core::jobs::JobId>,
+    pub(crate) active: Option<rulibre_core::jobs::JobId>,
+    pub(crate) workspaces: Vec<converter::Workspace>,
     pub(crate) targets: Vec<(String, String)>,
     pub(crate) selected: usize,
     pub(crate) message: Option<Result<String, String>>,
-}
-
-impl Default for ConvertState {
-    fn default() -> Self {
-        Self {
-            targets: Vec::new(),
-            selected: 0,
-            message: None,
-        }
-    }
 }
 
 pub fn draw(app: &App, frame: &mut Frame) {
@@ -138,7 +133,13 @@ pub fn draw(app: &App, frame: &mut Frame) {
 pub fn handle_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Esc | KeyCode::Char('q') => {
+            if let Some(id) = app.convert.active.take()
+                && let Some(job) = app.pending.iter().find(|job| job.handle.id == id)
+            {
+                job.handle.cancel();
+            }
             app.mode = Mode::Normal;
+            app.convert.selection_job = None;
             app.convert.targets.clear();
             app.convert.message = None;
         }
@@ -169,28 +170,21 @@ pub fn enter(app: &mut App) {
         return;
     };
 
-    let (has_kepubify, has_ebook_convert) = converter::available_backends();
-    if !has_kepubify && !has_ebook_convert {
-        app.convert.message = Some(Err(
-            "No conversion tools found (install kepubify or calibre's ebook-convert)".to_string(),
-        ));
-        app.convert.targets.clear();
-        app.mode = Mode::Convert;
-        return;
-    }
-
-    let targets = converter::target_formats(&book.formats, has_kepubify, has_ebook_convert);
-    if targets.is_empty() {
-        app.convert.message = Some(Err("No formats to convert to".to_string()));
-        app.convert.targets.clear();
-        app.mode = Mode::Convert;
-        return;
-    }
-
-    app.convert.targets = targets;
+    let book = book.clone();
+    app.convert.targets.clear();
     app.convert.selected = 0;
-    app.convert.message = None;
+    app.convert.message = Some(Ok("Checking converters…".into()));
     app.mode = Mode::Convert;
+    match app.jobs.submit(JobRequest::Backends) {
+        Ok(handle) => {
+            app.convert.selection_job = Some(handle.id);
+            app.pending.push(PendingJob {
+                handle,
+                kind: PendingKind::Backends(book),
+            });
+        }
+        Err(error) => app.convert.message = Some(Err(format!("{error:?}"))),
+    }
 }
 
 pub fn run(app: &mut App) {
@@ -205,32 +199,39 @@ pub fn run(app: &mut App) {
         return;
     };
 
-    let (target, _tool) = app.convert.targets[app.convert.selected].clone();
-    let book_path = book.path.clone();
-
-    let Some(source_file) = converter::find_source_file(&book_path) else {
-        app.convert.message = Some(Err("No suitable source file found".to_string()));
+    if app.convert.active.is_some() {
+        return;
+    }
+    let book = book.clone();
+    let Some((target, _)) = app.convert.targets.get(app.convert.selected) else {
         return;
     };
-
-    match converter::convert(&book_path, &source_file, &target) {
-        Ok(msg) => {
-            let new_formats = scanner::scan_formats(&book_path);
-            // Update filtered_books
-            if let Some(fb) = app.filtered_books.get_mut(idx) {
-                let book_path_clone = fb.path.clone();
-                fb.formats = new_formats.clone();
-                // Update matching entry in all_books
-                if let Some(ab) = app.all_books.iter_mut().find(|b| b.path == book_path_clone) {
-                    ab.formats = new_formats;
-                }
-            }
-            app.convert.message = Some(Ok(msg));
-            app.convert.targets.clear();
-            app.mode = Mode::Normal;
+    let Some(target) = scanner::Format::from_label(target) else {
+        return;
+    };
+    let result = (|| {
+        let library = converter::library_root(&book.path).map_err(|e| e.to_string())?;
+        let workspace = converter::Workspace::new(&library).map_err(|e| e.to_string())?;
+        let handle = app
+            .jobs
+            .submit(JobRequest::ConvertFiles {
+                library,
+                output_dir: workspace.path().to_owned(),
+                files: book.files.clone(),
+                target,
+            })
+            .map_err(|e| format!("{e:?}"))?;
+        Ok::<_, String>((handle, workspace))
+    })();
+    match result {
+        Ok((handle, workspace)) => {
+            app.convert.active = Some(handle.id);
+            app.pending.push(PendingJob {
+                handle,
+                kind: PendingKind::Convert(book, workspace),
+            });
+            app.convert.message = Some(Ok("Waiting for conversion".into()));
         }
-        Err(err) => {
-            app.convert.message = Some(Err(err));
-        }
+        Err(error) => app.convert.message = Some(Err(error)),
     }
 }

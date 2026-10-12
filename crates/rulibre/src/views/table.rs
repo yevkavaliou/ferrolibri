@@ -26,7 +26,7 @@ pub fn draw(app: &mut App, frame: &mut Frame, area: Rect) {
             Row::new(vec![
                 Cell::from(book.author.as_str()),
                 Cell::from(book.title.as_str()),
-                Cell::from(book.formats.as_str()),
+                Cell::from(crate::app::formats_label(book)),
             ])
         })
         .collect();

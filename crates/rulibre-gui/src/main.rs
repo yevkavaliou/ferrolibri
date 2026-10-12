@@ -14,11 +14,13 @@ mod app;
 mod components;
 #[cfg(target_arch = "wasm32")]
 mod ipc;
+#[cfg(not(target_arch = "wasm32"))]
+mod job_service;
 #[cfg(target_arch = "wasm32")]
 mod keys;
+mod response_guard;
 #[cfg(target_arch = "wasm32")]
 mod state;
-#[cfg(target_arch = "wasm32")]
 mod types;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -27,10 +29,19 @@ pub struct DeviceWatchState(
     pub std::sync::Arc<std::sync::Mutex<Option<rulibre_core::device::Device>>>,
 );
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+pub struct DeviceWatcherState(
+    pub std::sync::Mutex<Option<rulibre_core::device_watch::DeviceWatcher>>,
+);
+
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    console_error_panic_hook::set_once();
-    leptos::mount::mount_to_body(app::App);
+    #[cfg(not(feature = "ipc-smoke"))]
+    {
+        console_error_panic_hook::set_once();
+        leptos::mount::mount_to_body(app::App);
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -47,11 +58,17 @@ fn run() {
     use tauri::Manager;
     tauri::Builder::default()
         .manage(DeviceWatchState::default())
+        .manage(job_service::JobService::new().expect("create job workers"))
+        .manage(DeviceWatcherState::default())
         .setup(|app| {
             let handle = app.handle().clone();
             let shared: tauri::State<DeviceWatchState> = app.state();
             let shared = shared.0.clone();
-            tauri::async_runtime::spawn(device_watch::watch_loop(handle, shared));
+            let watcher = device_watch::start(handle, shared)?;
+            *app.state::<DeviceWatcherState>()
+                .0
+                .lock()
+                .map_err(|e| std::io::Error::other(e.to_string()))? = Some(watcher);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -65,21 +82,32 @@ fn run() {
             commands::convert_book,
             commands::send_to_device,
             commands::current_device,
+            commands::poll_job,
+            commands::cancel_job,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running rulibre GUI");
+        .build(tauri::generate_context!())
+        .expect("error while building rulibre GUI")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                if let Ok(mut watcher) = app.state::<DeviceWatcherState>().0.lock() {
+                    watcher.take();
+                }
+                app.state::<job_service::JobService>().shutdown();
+            }
+        });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn open_config_in_editor() -> std::io::Result<()> {
     use rulibre_core::config::Config;
-    let config_path = Config::path();
+    let config_path = Config::path().map_err(std::io::Error::other)?;
     std::fs::create_dir_all(config_path.parent().unwrap())?;
     if !config_path.exists() {
         Config {
-            library_path: String::new(),
+            library_path: std::path::PathBuf::new(),
         }
-        .save();
+        .save()
+        .map_err(std::io::Error::other)?;
     }
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vim".to_string());
     let status = std::process::Command::new(&editor)

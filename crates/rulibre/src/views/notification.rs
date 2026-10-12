@@ -6,18 +6,10 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+#[derive(Default)]
 pub(crate) struct NotificationState {
     pub(crate) message: Option<Result<String, String>>,
     pub(crate) ticks: u8,
-}
-
-impl Default for NotificationState {
-    fn default() -> Self {
-        Self {
-            message: None,
-            ticks: 0,
-        }
-    }
 }
 
 impl NotificationState {

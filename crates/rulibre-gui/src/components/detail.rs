@@ -21,7 +21,17 @@ pub fn Detail() -> impl IntoView {
         let meta = state.detail.get();
         let formats = state.selected_book().map(|b| b.formats);
         match meta {
-            None => view! { <p class="detail-empty">"No metadata found."</p> }.into_any(),
+            None => match state.selected_book() {
+                Some(book) => sections(
+                    Metadata {
+                        title: book.title,
+                        authors: vec![book.author],
+                        ..Metadata::default()
+                    },
+                    formats,
+                ),
+                None => view! { <p class="detail-empty">"No metadata found."</p> }.into_any(),
+            },
             Some(meta) => {
                 view! { <div class="detail-content">{sections(meta, formats)}</div> }.into_any()
             }

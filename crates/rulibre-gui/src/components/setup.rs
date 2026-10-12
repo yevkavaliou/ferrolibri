@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::state::{AppState, Mode};
 use crate::ipc;
+use crate::state::{AppState, Mode};
 
 #[component]
 pub fn Setup() -> impl IntoView {
@@ -15,21 +15,43 @@ pub fn Setup() -> impl IntoView {
     };
 
     let submit = move || {
+        if state.setup_busy.get_untracked() {
+            return;
+        }
+        state.setup_busy.set(true);
         let path = state.setup_input.get();
         spawn_local(async move {
             match ipc::validate_library(path.clone()).await {
                 Ok(sanitized) => {
                     if let Err(err) = ipc::save_config(sanitized.clone()).await {
+                        state.setup_busy.set(false);
                         state.setup_error.set(err);
                         return;
                     }
-                    let books = ipc::scan_library(sanitized).await;
+                    let report = match ipc::scan_library(sanitized).await {
+                        Ok(report) => report,
+                        Err(e) => {
+                            state.setup_busy.set(false);
+                            state.setup_error.set(e);
+                            return;
+                        }
+                    };
+                    if !report.warnings.is_empty() {
+                        state.notify(Err(report.warnings.join("; ")));
+                    }
+                    let books = report.books;
                     let has_books = !books.is_empty();
                     state.all_books.set(books);
-                    state.selected_idx.set(if has_books { Some(0) } else { None });
+                    state
+                        .selected_idx
+                        .set(if has_books { Some(0) } else { None });
                     state.mode.set(Mode::Normal);
+                    state.setup_busy.set(false);
                 }
-                Err(err) => state.setup_error.set(err),
+                Err(err) => {
+                    state.setup_busy.set(false);
+                    state.setup_error.set(err);
+                }
             }
         });
     };
@@ -59,7 +81,7 @@ pub fn Setup() -> impl IntoView {
                     <span><kbd>"Enter"</kbd>" confirm"</span>
                 </div>
                 <div class="modal-actions">
-                    <button on:click=on_click>"Open library"</button>
+                    <button on:click=on_click disabled=move || state.setup_busy.get()>"Open library"</button>
                 </div>
             </div>
         </div>

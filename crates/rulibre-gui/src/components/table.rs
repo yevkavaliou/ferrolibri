@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::MouseEvent;
 
-use crate::state::{AppState, ContextMenuData, Focus, Mode};
 use crate::ipc;
+use crate::state::{AppState, ContextMenuData, Focus, Mode};
 use crate::types::{Book, Metadata};
 
 #[component]
@@ -46,7 +46,7 @@ pub fn BookTable() -> impl IntoView {
                     <tbody>
                         <For
                             each={move || state.filtered.get().into_iter().enumerate().collect::<Vec<_>>()}
-                            key=|(_, b)| format!("{}:{}", b.path, b.formats)
+                            key=|(_, b)| (b.id.clone(), b.formats.clone())
                             children=move |(idx, book): (usize, Book)| book_row(state, idx, book)
                         />
                     </tbody>
@@ -58,7 +58,11 @@ pub fn BookTable() -> impl IntoView {
 
 fn book_row(state: AppState, idx: usize, book: Book) -> impl IntoView {
     let row_class = move || {
-        if state.selected_idx.get() == Some(idx) { "selected" } else { "" }
+        if state.selected_idx.get() == Some(idx) {
+            "selected"
+        } else {
+            ""
+        }
     };
     let on_click = move |_| open_row(state, idx);
     let on_contextmenu = move |ev: MouseEvent| {
@@ -85,7 +89,14 @@ pub fn open_row(state: AppState, idx: usize) {
     if let Some(book) = book {
         state.mode.set(Mode::Detail);
         spawn_local(async move {
-            let meta = ipc::parse_metadata(book.path).await;
+            let meta = match ipc::parse_metadata(book.path).await {
+                Ok(meta) => meta,
+                Err(e) => {
+                    state.detail.set(None);
+                    state.notify(Err(e));
+                    return;
+                }
+            };
             state.detail.set(meta.or(Some(Metadata::default())));
         });
     }
