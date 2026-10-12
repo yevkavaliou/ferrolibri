@@ -1,6 +1,9 @@
 //! Enumerate mounted local filesystems independently of reader recognition.
 use std::path::PathBuf;
 
+mod space;
+pub use space::free_space;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MountedVolume {
     /// OS volume identity, independent of the displayed mount path when available.

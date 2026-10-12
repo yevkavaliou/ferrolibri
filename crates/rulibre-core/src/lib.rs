@@ -2,6 +2,7 @@ pub mod book;
 pub mod config;
 pub mod conversion_model;
 pub mod converter;
+pub mod cover;
 pub mod device;
 pub mod device_model;
 pub mod device_watch;

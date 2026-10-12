@@ -10,3 +10,22 @@ description = "Native iced desktop client for Rulibre"
 rulibre-core = { path = "../rulibre-core" }
 iced = { version = "0.14", features = ["image", "svg", "tokio", "advanced", "lazy"] }
 env_logger = "0.11"
+serde.workspace = true
+toml.workspace = true
+tokio = { version = "1", features = ["rt", "sync"] }
+rfd = "0.17"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+dirs = "6"
+sha2 = "0.10"
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+iced_runtime = "0.14"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+window-vibrancy = "0.8"
+libloading = "0.8"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+window-vibrancy = "0.8"

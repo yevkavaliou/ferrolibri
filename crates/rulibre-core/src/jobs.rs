@@ -17,6 +17,7 @@ use std::{
 
 pub use crate::job_model::{JobEvent, JobId, JobState, Stage};
 
+#[derive(Clone, Debug)]
 pub enum JobRequest {
     Metadata {
         book: PathBuf,
@@ -107,6 +108,7 @@ pub struct JobExecutor {
     shared: Arc<Shared>,
     workers: Vec<JoinHandle<()>>,
     capacity: usize,
+    volumes: Arc<dyn Fn() -> Result<crate::volumes::VolumeReport, Error> + Send + Sync>,
 }
 
 /// Dropping a handle does not cancel the operation. Call cancel explicitly.
@@ -187,6 +189,16 @@ impl Context {
 impl JobExecutor {
     /// capacity limits all accepted unfinished jobs, including running jobs.
     pub fn new(parallelism: usize, capacity: usize) -> std::io::Result<Self> {
+        Self::with_volume_source(parallelism, capacity, crate::volumes::mounted_volumes)
+    }
+
+    /// Inject volume enumeration per executor, retaining reader recognition and
+    /// every revalidation during transfer. Useful for deterministic folder fixtures.
+    pub fn with_volume_source(
+        parallelism: usize,
+        capacity: usize,
+        volumes: impl Fn() -> Result<crate::volumes::VolumeReport, Error> + Send + Sync + 'static,
+    ) -> std::io::Result<Self> {
         if parallelism == 0 || capacity == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -205,6 +217,7 @@ impl JobExecutor {
             }),
             workers: Vec::new(),
             capacity,
+            volumes: Arc::new(volumes),
         };
         for index in 0..parallelism {
             let shared = executor.shared.clone();
@@ -224,11 +237,15 @@ impl JobExecutor {
             JobRequest::Scan { .. } | JobRequest::Metadata { .. } | JobRequest::Backends => vec![],
             JobRequest::ConvertFiles { output_dir, .. } => vec![destination_key(output_dir)?],
             JobRequest::Convert { output_dir, .. } => vec![destination_key(output_dir)?],
+            JobRequest::Send { device, .. } if device.is_mtp() => {
+                vec![Resource::Device(device.id.clone())]
+            }
             JobRequest::Send { device, .. } => vec![
                 Resource::Device(device.id.clone()),
                 destination_key(&device.mount_point)?,
             ],
         };
+        let volumes = self.volumes.clone();
         self.enqueue(
             keys,
             Box::new(move |ctx| match request {
@@ -283,19 +300,29 @@ impl JobExecutor {
                     options,
                 } => {
                     ctx.stage(Stage::Preparing);
-                    crate::transfer::validate_device(&device)?;
+                    if device.is_mtp() {
+                        crate::transfer::validate_device(&device)?;
+                    } else {
+                        crate::transfer::validate_device_from_volumes(
+                            &device,
+                            &volumes()?.volumes,
+                        )?;
+                    }
                     let file =
                         device::prepare_file_cancellable(&book, &device, options, &ctx.cancel)?;
                     let library = converter::library_root(&book)?;
-                    converter::validate_output_dir(&library, &device.mount_point)?;
+                    if !device.is_mtp() {
+                        converter::validate_output_dir(&library, &device.mount_point)?;
+                    }
                     ctx.check()?;
                     ctx.stage(Stage::Copying);
-                    crate::transfer::transfer_file(
+                    crate::transfer::transfer_file_with_volume_source(
                         &file.path,
                         &device,
                         &author,
                         &ctx.cancel,
                         ctx.copy_progress(),
+                        || volumes(),
                     )
                     .map(JobOutput::Sent)
                 }
@@ -490,6 +517,47 @@ mod tests {
             .unwrap();
         assert_ne!(start.recv_timeout(TIMEOUT).unwrap(), thread::current().id());
         (handle, release)
+    }
+
+    #[test]
+    fn mtp_jobs_reserve_device_identity_without_resolving_empty_mount_path() {
+        let executor = JobExecutor::with_volume_source(1, 4, || {
+            panic!("queued MTP jobs must not enumerate filesystem volumes")
+        })
+        .unwrap();
+        let (running, release) = blocker(&executor, vec![]);
+        let request = |id: &str| JobRequest::Send {
+            book: "unused-book".into(),
+            author: "Test".into(),
+            options: Default::default(),
+            device: device::Device {
+                id: device::DeviceId(id.into()),
+                kind: device::DeviceKind::Kindle,
+                mount_point: Default::default(),
+                label: Some("Kindle".into()),
+                filesystem: "MTP".into(),
+                read_only: false,
+                evidence: vec![device::DetectionEvidence::WindowsPortableDevice],
+            },
+        };
+        let first = executor.submit(request("mtp-one")).unwrap();
+        assert!(matches!(
+            executor.submit(request("mtp-one")),
+            Err(SubmitError::Conflict)
+        ));
+        let other = executor.submit(request("mtp-two")).unwrap();
+        first.cancel();
+        other.cancel();
+        release.send(()).unwrap();
+        running.wait().unwrap();
+        assert!(matches!(
+            first.wait().unwrap_err().kind,
+            ErrorKind::Cancelled
+        ));
+        assert!(matches!(
+            other.wait().unwrap_err().kind,
+            ErrorKind::Cancelled
+        ));
     }
 
     #[test]

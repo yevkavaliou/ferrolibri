@@ -14,6 +14,9 @@ use std::{
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+#[path = "mtp.rs"]
+mod mtp;
+
 fn invalid(path: &Path) -> Error {
     Error {
         operation: "validate transfer path",
@@ -69,14 +72,20 @@ fn check_cancel(cancel: &CancellationToken) -> Result<(), Error> {
 
 /// Revalidate OS volume identity and reader evidence, including manual selection.
 pub fn validate_device(device: &Device) -> Result<(), Error> {
+    if device.is_mtp() {
+        return mtp::validate(device);
+    }
     let report = crate::volumes::mounted_volumes()?;
     validate_device_from_volumes(device, &report.volumes)
 }
 
-fn validate_device_from_volumes(
+pub(crate) fn validate_device_from_volumes(
     device: &Device,
     volumes: &[crate::volumes::MountedVolume],
 ) -> Result<(), Error> {
+    if device.is_mtp() {
+        return mtp::validate(device);
+    }
     let current = if device
         .evidence
         .contains(&DetectionEvidence::ManualSelection)
@@ -387,6 +396,9 @@ pub fn transfer_file(
     cancel: &CancellationToken,
     progress: impl FnMut(u64, u64),
 ) -> Result<PathBuf, Error> {
+    if device.is_mtp() {
+        return mtp::transfer(file, device, cancel, progress);
+    }
     transfer_with(
         file,
         device,
@@ -394,6 +406,30 @@ pub fn transfer_file(
         cancel,
         progress,
         validate_device,
+        |out, bytes| out.write_all(bytes),
+    )
+}
+
+/// Same transfer and validation policy with an injectable mounted-volume feed.
+/// Used by the background executor; the production feed enumerates OS mounts.
+pub(crate) fn transfer_file_with_volume_source(
+    file: &Path,
+    device: &Device,
+    author: &str,
+    cancel: &CancellationToken,
+    progress: impl FnMut(u64, u64),
+    volumes: impl Fn() -> Result<crate::volumes::VolumeReport, Error>,
+) -> Result<PathBuf, Error> {
+    if device.is_mtp() {
+        return mtp::transfer(file, device, cancel, progress);
+    }
+    transfer_with(
+        file,
+        device,
+        author,
+        cancel,
+        progress,
+        |device| validate_device_from_volumes(device, &volumes()?.volumes),
         |out, bytes| out.write_all(bytes),
     )
 }

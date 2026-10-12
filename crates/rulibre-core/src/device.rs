@@ -56,7 +56,9 @@ impl DeviceState {
         crate::transfer::validate_device(dev)?;
         let file = prepare_file_cancellable(book_path, dev, options, cancel)?;
         let library = converter::library_root(book_path)?;
-        converter::validate_output_dir(&library, &dev.mount_point)?;
+        if !dev.is_mtp() {
+            converter::validate_output_dir(&library, &dev.mount_point)?;
+        }
         crate::transfer::transfer_file(&file.path, dev, author, cancel, |_, _| {})
     }
 }
@@ -613,7 +615,29 @@ pub fn detect_devices() -> Result<DiscoveryReport, crate::Error> {
     let volumes = crate::volumes::mounted_volumes()?;
     let mut report = detect_devices_from_volumes(&volumes.volumes);
     report.warnings.extend(volumes.warnings);
+    merge_portable_devices(&mut report);
     Ok(report)
+}
+
+#[cfg(windows)]
+#[path = "portable_windows.rs"]
+mod portable_windows;
+
+/// Include portable readers without treating their identities as filesystem paths.
+/// A portable-device failure must not hide mounted readers.
+pub fn merge_portable_devices(report: &mut DiscoveryReport) {
+    #[cfg(windows)]
+    match portable_windows::enumerate() {
+        Ok(portable) => {
+            report.devices.extend(portable.devices);
+            report.warnings.extend(portable.warnings);
+            report.devices.sort_by(|a, b| a.id.cmp(&b.id));
+            report.devices.dedup_by(|a, b| a.id == b.id);
+        }
+        Err(error) => report.warnings.push(error),
+    }
+    #[cfg(not(windows))]
+    let _ = report;
 }
 
 /// Recognize a snapshot supplied by a filesystem-volume enumerator.

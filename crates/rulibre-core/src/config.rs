@@ -59,38 +59,51 @@ impl Config {
         };
         let content = toml::to_string_pretty(&config)
             .map_err(|e| crate::Error::invalid_data("serialize config", path, e))?;
-        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-            fs::create_dir_all(parent)
-                .map_err(|e| crate::Error::io("create config directory", parent, e))?;
-        }
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        let (temporary, mut file) = loop {
-            let candidate = parent.join(format!(
-                ".rulibre-config-{}-{}.tmp",
-                std::process::id(),
-                NEXT_FILE.fetch_add(1, Ordering::Relaxed)
-            ));
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&candidate)
-            {
-                Ok(file) => break (TemporaryFile(candidate), file),
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
-                Err(e) => return Err(crate::Error::io("create temporary config", path, e)),
-            }
-        };
-        write(&mut file, content.as_bytes())
-            .map_err(|e| crate::Error::io("write temporary config", path, e))?;
-        file.sync_all()
-            .map_err(|e| crate::Error::io("sync temporary config", path, e))?;
-        // Close before replacement on Windows. Never delete the existing config first.
-        drop(file);
-        fs::rename(&temporary.0, path).map_err(|e| crate::Error::io("replace config", path, e))
+        write_atomic_with(path, content.as_bytes(), write)
     }
+}
+
+/// Atomically replace a file after syncing its complete contents. On failure the
+/// previous file is preserved and the temporary file is removed.
+pub fn write_atomic(path: &Path, content: &[u8]) -> Result<(), crate::Error> {
+    write_atomic_with(path, content, |file, bytes| file.write_all(bytes))
+}
+
+fn write_atomic_with(
+    path: &Path,
+    content: &[u8],
+    write: impl FnOnce(&mut fs::File, &[u8]) -> io::Result<()>,
+) -> Result<(), crate::Error> {
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)
+            .map_err(|e| crate::Error::io("create config directory", parent, e))?;
+    }
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let (temporary, mut file) = loop {
+        let candidate = parent.join(format!(
+            ".rulibre-config-{}-{}.tmp",
+            std::process::id(),
+            NEXT_FILE.fetch_add(1, Ordering::Relaxed)
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => break (TemporaryFile(candidate), file),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(crate::Error::io("create temporary config", path, e)),
+        }
+    };
+    write(&mut file, content).map_err(|e| crate::Error::io("write temporary config", path, e))?;
+    file.sync_all()
+        .map_err(|e| crate::Error::io("sync temporary config", path, e))?;
+    // Close before replacement on Windows. Never delete the existing config first.
+    drop(file);
+    fs::rename(&temporary.0, path).map_err(|e| crate::Error::io("replace config", path, e))
 }
 
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);

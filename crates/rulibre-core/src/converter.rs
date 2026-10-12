@@ -48,8 +48,10 @@ pub fn library_root(book_path: &Path) -> Result<PathBuf, crate::Error> {
     ))
 }
 
-/// Existing directories only: canonicalization resolves relative paths and links.
-pub(crate) fn validate_output_dir(
+/// Validate an existing export directory outside all Calibre libraries.
+/// Canonicalization resolves links. A temporary empty file verifies write access
+/// only after library protection checks; it is removed before returning.
+pub fn validate_output_dir(
     library_root: &Path,
     output_dir: &Path,
 ) -> Result<PathBuf, crate::Error> {
@@ -66,6 +68,38 @@ pub(crate) fn validate_output_dir(
             Ok(_) => return Err(invalid_path(output_dir)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(crate::Error::io("inspect output directory", ancestor, e)),
+        }
+    }
+    let permissions = std::fs::metadata(&output)
+        .map_err(|e| crate::Error::io("inspect output permissions", output_dir, e))?
+        .permissions();
+    if permissions.readonly() {
+        return Err(crate::Error::io(
+            "write output directory",
+            output_dir,
+            io::Error::from(io::ErrorKind::PermissionDenied),
+        ));
+    }
+    static NEXT_PROBE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    loop {
+        let probe = output.join(format!(
+            ".rulibre-write-check-{}-{}",
+            std::process::id(),
+            NEXT_PROBE.fetch_add(1, Ordering::Relaxed)
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe)
+        {
+            Ok(file) => {
+                drop(file);
+                std::fs::remove_file(&probe)
+                    .map_err(|e| crate::Error::io("remove output write check", &probe, e))?;
+                break;
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(crate::Error::io("write output directory", output_dir, e)),
         }
     }
     Ok(output)
@@ -565,7 +599,13 @@ fn validate_source_and_destination(
     };
     let destination = output_dir.join(name).with_extension(extension);
     match std::fs::symlink_metadata(&destination) {
-        Ok(_) => return Err(invalid_path(&destination)),
+        Ok(_) => {
+            return Err(crate::Error {
+                operation: "validate conversion destination",
+                path: Some(destination),
+                kind: crate::ErrorKind::Conflict,
+            });
+        }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => {
             return Err(crate::Error::io(
@@ -673,8 +713,17 @@ fn execute_with(
         cancel.check()?;
         // Atomic publication with no overwrite, including a racing creator.
         // A hard link is same-filesystem because staging is under output_dir.
-        std::fs::hard_link(&temporary, &destination)
-            .map_err(|error| crate::Error::io("publish conversion output", &destination, error))?;
+        std::fs::hard_link(&temporary, &destination).map_err(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                crate::Error {
+                    operation: "publish conversion output",
+                    path: Some(destination.clone()),
+                    kind: crate::ErrorKind::Conflict,
+                }
+            } else {
+                crate::Error::io("publish conversion output", &destination, error)
+            }
+        })?;
         Ok(ConversionResult {
             output_path: destination,
             size: metadata.len(),
@@ -697,6 +746,40 @@ mod tests {
     #[cfg(windows)]
     use std::os::windows::process::ExitStatusExt;
     use std::{collections::VecDeque, ffi::OsString, process::ExitStatus};
+
+    #[test]
+    fn export_validation_rejects_library_missing_and_readonly_without_library_writes() {
+        let fixture = Fixture::new();
+        let before = snapshot(&fixture.library);
+        let export = fixture.root.join("exports");
+        std::fs::create_dir(&export).unwrap();
+        assert_eq!(
+            validate_output_dir(&fixture.library, &export).unwrap(),
+            std::fs::canonicalize(&export).unwrap()
+        );
+        assert_eq!(std::fs::read_dir(&export).unwrap().count(), 0);
+        assert!(validate_output_dir(&fixture.library, &fixture.library).is_err());
+        assert!(validate_output_dir(&fixture.library, &fixture.book).is_err());
+        assert!(validate_output_dir(&fixture.library, &fixture.root.join("missing")).is_err());
+        assert!(
+            validate_output_dir(&fixture.library, &fixture.library.join("metadata.db")).is_err()
+        );
+        let original = std::fs::metadata(&export).unwrap().permissions();
+        let mut readonly = original.clone();
+        readonly.set_readonly(true);
+        std::fs::set_permissions(&export, readonly).unwrap();
+        let result = validate_output_dir(&fixture.library, &export);
+        std::fs::set_permissions(&export, original).unwrap();
+        assert!(
+            matches!(result.unwrap_err().kind, crate::ErrorKind::Io(error) if error.kind() == io::ErrorKind::PermissionDenied)
+        );
+        let other = fixture.root.join("other-library");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::write(other.join("metadata.db"), b"marker").unwrap();
+        assert!(validate_output_dir(&fixture.library, &other).is_err());
+        assert_eq!(snapshot(&fixture.library), before);
+        assert_eq!(std::fs::read_dir(&export).unwrap().count(), 0);
+    }
 
     fn output(success: bool, stdout: &[u8], stderr: &[u8]) -> io::Result<Output> {
         Ok(Output {
@@ -963,6 +1046,7 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.operation, "publish conversion output");
+        assert!(matches!(error.kind, crate::ErrorKind::Conflict));
         assert_eq!(std::fs::read(&destination).unwrap(), b"concurrent file");
         let mut runner = FakeRunner::new(Behavior::Success);
         assert!(

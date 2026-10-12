@@ -20,12 +20,14 @@ pub enum DetectionEvidence {
     KindleVersion,
     KindleDocuments,
     ManualSelection,
+    WindowsPortableDevice,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Device {
     pub id: DeviceId,
     pub kind: DeviceKind,
+    /// Empty for portable MTP devices; never interpret it as a local directory.
     pub mount_point: PathBuf,
     pub label: Option<String>,
     pub filesystem: String,
@@ -34,6 +36,15 @@ pub struct Device {
 }
 
 impl Device {
+    /// MTP devices have an OS identity, but no filesystem mount point.
+    pub fn is_mtp(&self) -> bool {
+        self.filesystem.eq_ignore_ascii_case("mtp")
+    }
+
+    pub fn can_transfer(&self) -> bool {
+        !self.read_only && (!self.is_mtp() || cfg!(windows))
+    }
+
     pub fn name(&self) -> &'static str {
         match self.kind {
             DeviceKind::Kobo => "Kobo",
@@ -87,7 +98,11 @@ impl DeviceEvent {
                 Some(device) => format!(
                     "{} selected ({})",
                     device.name(),
-                    device.mount_point.display()
+                    if device.is_mtp() {
+                        "USB / MTP".into()
+                    } else {
+                        device.mount_point.display().to_string()
+                    }
                 ),
                 None if devices.len() > 1 => "Multiple readers detected; select a device".into(),
                 None => "No reader selected".into(),

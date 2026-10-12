@@ -8,7 +8,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'UI build failed' }
     & cargo clippy -p rulibre-ui --locked --all-targets -- -D warnings
     if ($LASTEXITCODE -ne 0) { throw 'UI Clippy failed' }
-    & cargo test -p rulibre-ui --locked
+    & cargo test -p rulibre-ui --locked --all-targets
     if ($LASTEXITCODE -ne 0) { throw 'UI tests failed' }
 } finally {
     Pop-Location
