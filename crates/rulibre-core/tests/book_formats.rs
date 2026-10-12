@@ -247,7 +247,8 @@ fn model_serialization_contains_typed_files_and_tagged_identity() {
     );
 }
 
-#[cfg(unix)]
+// macOS filesystems reject invalid UTF-8 names before the scanner can read them.
+#[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn native_non_unicode_filenames_keep_exact_paths() {
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};

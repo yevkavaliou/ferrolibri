@@ -202,13 +202,13 @@ pub(super) fn enumerate() -> Result<VolumeReport, crate::Error> {
         else {
             continue;
         };
-        if let Ok(source) = fs::canonicalize(source) {
-            if let Some((uuid, label)) = identities.get(&source) {
-                if let Some(uuid) = uuid {
-                    volume.id = format!("linux:uuid:{uuid}");
-                }
-                volume.label = label.clone();
+        if let Ok(source) = fs::canonicalize(source)
+            && let Some((uuid, label)) = identities.get(&source)
+        {
+            if let Some(uuid) = uuid {
+                volume.id = format!("linux:uuid:{uuid}");
             }
+            volume.label = label.clone();
         }
     }
     report
