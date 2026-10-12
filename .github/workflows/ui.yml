@@ -1,0 +1,42 @@
+name: iced UI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux window and graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libvulkan1 libvulkan-dev mesa-vulkan-drivers
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: iced-ui
+      - name: Build, lint and test UI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target | Out-Null
+          & ./scripts/check-ui.ps1 *>&1 | Tee-Object -FilePath target/ui.log
+          if ($LASTEXITCODE -ne 0) { throw 'UI checks failed' }
+      - name: Save verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-${{ matrix.os }}
+          path: target/ui.log

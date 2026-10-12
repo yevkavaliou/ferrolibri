@@ -4,6 +4,7 @@ members = [
     "crates/rulibre",
     "crates/rulibre-core",
     "crates/rulibre-gui",
+    "crates/rulibre-ui",
 ]
 default-members = ["crates/rulibre-core", "crates/rulibre"]
 

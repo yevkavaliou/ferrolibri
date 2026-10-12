@@ -1,0 +1,12 @@
+[package]
+name = "rulibre-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Native iced desktop client for Rulibre"
+
+[dependencies]
+rulibre-core = { path = "../rulibre-core" }
+iced = { version = "0.14", features = ["image", "svg", "tokio", "advanced", "lazy"] }
+env_logger = "0.11"
