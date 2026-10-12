@@ -1,4 +1,5 @@
 //! Read-only source discovery and bounded thumbnail decoding, off the UI thread.
+use crate::palette::CoverColors;
 use iced::widget::image::Handle;
 use rulibre_core::{book::BookId, cover::CoverFile};
 use sha2::{Digest, Sha256};
@@ -78,9 +79,15 @@ pub fn cache_dir() -> PathBuf {
         .join("rulibre/covers")
 }
 
+struct Entry {
+    handle: Option<Handle>,
+    age: u64,
+    colors: Option<CoverColors>,
+}
+
 #[derive(Default)]
 pub struct CoverCache {
-    entries: BTreeMap<BookId, (Option<Handle>, u64)>,
+    entries: BTreeMap<BookId, Entry>,
     clock: u64,
     pub generation: u64,
     pub wanted: Vec<BookId>,
@@ -88,7 +95,11 @@ pub struct CoverCache {
 }
 impl CoverCache {
     pub fn get(&self, id: &BookId) -> Option<&Handle> {
-        self.entries.get(id).and_then(|(h, _)| h.as_ref())
+        self.entries.get(id).and_then(|entry| entry.handle.as_ref())
+    }
+    /// Colours of the cover, measured once when it was inserted.
+    pub fn colors(&self, id: &BookId) -> Option<CoverColors> {
+        self.entries.get(id).and_then(|entry| entry.colors)
     }
     pub fn contains(&self, id: &BookId) -> bool {
         self.entries.contains_key(id)
@@ -101,12 +112,28 @@ impl CoverCache {
     }
     pub fn insert(&mut self, id: BookId, handle: Option<Handle>) {
         self.clock += 1;
-        self.entries.insert(id, (handle, self.clock));
+        let colors = match &handle {
+            Some(Handle::Rgba {
+                width,
+                height,
+                pixels,
+                ..
+            }) => crate::palette::from_rgba(*width, *height, pixels),
+            _ => None,
+        };
+        self.entries.insert(
+            id,
+            Entry {
+                handle,
+                age: self.clock,
+                colors,
+            },
+        );
         while self.entries.len() > CAPACITY {
             let oldest = self
                 .entries
                 .iter()
-                .min_by_key(|(_, (_, age))| age)
+                .min_by_key(|(_, entry)| entry.age)
                 .unwrap()
                 .0
                 .clone();
@@ -119,9 +146,9 @@ impl CoverCache {
             self.wanted = wanted;
         }
         for id in &self.wanted {
-            if let Some((_, age)) = self.entries.get_mut(id) {
+            if let Some(entry) = self.entries.get_mut(id) {
                 self.clock += 1;
-                *age = self.clock;
+                entry.age = self.clock;
             }
         }
     }
@@ -180,6 +207,21 @@ mod tests {
         cover.modified = UNIX_EPOCH;
         cover.path = "other-library/cover.jpg".into();
         assert_ne!(key, cache_key(&id, &cover));
+    }
+    #[test]
+    fn colours_are_measured_on_insert_and_follow_the_entry() {
+        let mut cache = CoverCache::default();
+        let (a, b) = (BookId::Calibre(1), BookId::Calibre(2));
+        let pixels = image::RgbaImage::from_pixel(64, 64, image::Rgba([30, 90, 220, 255]));
+        cache.insert(
+            a.clone(),
+            Some(Handle::from_rgba(64, 64, pixels.into_raw())),
+        );
+        cache.insert(b.clone(), None);
+        let colors = cache.colors(&a).unwrap();
+        assert!(colors.accent.b > colors.accent.r);
+        assert!(cache.colors(&b).is_none());
+        assert!(cache.colors(&BookId::Calibre(3)).is_none());
     }
     #[test]
     fn lru_and_fast_scroll_keep_memory_and_workers_bounded() {

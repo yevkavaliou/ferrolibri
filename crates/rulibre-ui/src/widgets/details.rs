@@ -5,7 +5,7 @@ use crate::{
 };
 use iced::{
     Element, Fill,
-    widget::{button, column, container, image, row, scrollable, text, tooltip},
+    widget::{button, column, container, image, row, scrollable, text},
 };
 use rulibre_core::{
     book::{Book, Format},
@@ -101,12 +101,15 @@ pub fn view(state: &State) -> Element<'_, Message> {
     }
     if books.len() == 1 {
         let book = &books[0];
+        // The cover never outgrows the pane (its text area is 24 px narrower).
+        let cover_width =
+            (state.visible_settings().cover_size as f32).min(state.details_width() - 24.0);
         if let Some(cover) = state.covers.get(&book.id) {
             content = content.push(
                 container(
                     image(cover.clone())
-                        .width(state.visible_settings().cover_size as f32)
-                        .height(state.visible_settings().cover_size as f32 * 1.375)
+                        .width(cover_width)
+                        .height(cover_width * 1.375)
                         .content_fit(iced::ContentFit::Contain),
                 )
                 .center_x(Fill),
@@ -134,12 +137,12 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 .width(Fill),
         );
         if let Some(error) = &state.metadata_error {
-            content = content.push(tooltip(
+            content = content.push(super::tip(
                 text("Metadata could not be read")
                     .size(theme::font(state, 11.0))
                     .color(theme::DARK.text_muted),
                 text(error).size(theme::font(state, 12.0)),
-                tooltip::Position::Left,
+                super::Position::Left,
             ));
         } else if state.metadata.is_none() {
             content = content.push(
@@ -197,124 +200,12 @@ pub fn view(state: &State) -> Element<'_, Message> {
             );
         }
     }
-    let mut actions = column![tooltip(
-        button(
-            text(if books.len() == 1 {
-                "Convert ▾".into()
-            } else {
-                format!("Convert {} books ▾", books.len())
-            })
-            .size(theme::font(state, 12.0))
-        )
-        .width(Fill)
-        .style(theme::outline)
-        .on_press(Message::ToggleConvert),
-        text(crate::keymap::tip(
-            "Convert",
-            crate::keymap::Command::ToggleConvert
-        ))
-        .size(theme::font(state, 12.0)),
-        tooltip::Position::Left,
-    )]
-    .spacing(6);
-    if state.convert_menu {
-        actions = actions.push(
-            button(
-                text(if state.backend_job.is_some() {
-                    "Finding converters…"
-                } else {
-                    "Refresh converters"
-                })
-                .size(theme::font(state, 11.0)),
-            )
-            .style(theme::quiet)
-            .on_press_maybe(
-                state
-                    .backend_job
-                    .is_none()
-                    .then_some(Message::RefreshBackends),
-            ),
-        );
-        if let Some(error) = &state.backend_error {
-            actions = actions.push(
-                text(error)
-                    .size(theme::font(state, 11.0))
-                    .color(theme::DARK.error),
-            );
-        }
-        if state.backend_job.is_none()
-            && !state
-                .backends
-                .iter()
-                .any(|b| b.status == rulibre_core::converter::BackendStatus::Ready)
-        {
-            actions = actions.push(
-                text("No converter found. Install Calibre, then choose Refresh converters.")
-                    .size(theme::font(state, 11.0))
-                    .color(theme::DARK.warning),
-            );
-        }
-        let available = targets(&books, &state.backends);
-        for target in TARGETS {
-            if available.contains(&target) {
-                let route = converter::target_formats(&books[0].files, &state.backends)
-                    .into_iter()
-                    .find(|(f, _)| *f == target)
-                    .unwrap()
-                    .1;
-                actions = actions.push(
-                    button(
-                        text(format!("{} · {route}", target.label()))
-                            .size(theme::font(state, 12.0)),
-                    )
-                    .width(Fill)
-                    .style(theme::quiet)
-                    .on_press(Message::Convert(target))
-                    .style(theme::conversion_route),
-                );
-            } else {
-                let skipped = books
-                    .iter()
-                    .filter_map(|book| {
-                        let reason = unavailable(book, target, &state.backends);
-                        (!reason.is_empty()).then(|| format!("{}: {reason}", book.title))
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                actions = actions.push(tooltip(
-                    text(format!("{} · no route", target.label()))
-                        .size(theme::font(state, 11.0))
-                        .color(iced::Color::from_rgb8(176, 181, 192)),
-                    container(scrollable(
-                        text(skipped).size(theme::font(state, 11.0)).width(Fill),
-                    ))
-                    .width(360)
-                    .max_height(220)
-                    .padding(12)
-                    .style(theme::conversion_menu),
-                    tooltip::Position::Left,
-                ));
-            }
-        }
-    }
-    column![
-        scrollable(content)
-            .id(content_id())
-            .direction(theme::vbar())
-            .style(theme::scroll(state))
-            .height(Fill),
-        container(
-            scrollable(actions)
-                .direction(theme::vbar())
-                .style(theme::scroll(state))
-        )
-        .padding(8)
-        .style(theme::conversion_menu)
-        .max_height(if state.convert_menu { 250.0 } else { 64.0 })
-    ]
-    .spacing(12)
-    .height(Fill)
-    .into()
+    scrollable(content)
+        .id(content_id())
+        .direction(theme::vbar())
+        .style(theme::scroll(state))
+        .height(Fill)
+        .into()
 }
 pub fn fields(metadata: &Metadata, book: &Book) -> Vec<(&'static str, String)> {
     [

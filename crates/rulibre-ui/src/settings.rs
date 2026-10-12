@@ -12,12 +12,21 @@ pub enum ViewMode {
     List,
 }
 
+pub const TEXT_SIZE_RANGE: (u16, u16) = (14, 24);
+pub const COVER_SIZE_RANGE: (u16, u16) = (120, 220);
+pub const COVER_SIZE_STEP: u16 = 4;
+pub const SIDEBAR_WIDTH_RANGE: (u16, u16) = (160, 260);
+pub const SIDEBAR_WIDTH_DEFAULT: u16 = 188;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiSettings {
     pub text_size: u16,
     pub cover_size: u16,
     pub details_width: u16,
+    pub sidebar_width: u16,
+    /// The Library group of the sidebar is open; remembered between launches.
+    pub library_expanded: bool,
     pub view: ViewMode,
     pub sidebar_visible: bool,
     pub details_visible: bool,
@@ -35,6 +44,8 @@ impl Default for UiSettings {
             text_size: 16,
             cover_size: 160,
             details_width: 300,
+            sidebar_width: SIDEBAR_WIDTH_DEFAULT,
+            library_expanded: false,
             view: ViewMode::Grid,
             sidebar_visible: true,
             details_visible: true,
@@ -47,8 +58,13 @@ impl Default for UiSettings {
 }
 impl UiSettings {
     pub fn normalize(&mut self) {
-        self.text_size = self.text_size.clamp(14, 20);
-        self.cover_size = self.cover_size.clamp(120, 200);
+        self.text_size = self.text_size.clamp(TEXT_SIZE_RANGE.0, TEXT_SIZE_RANGE.1);
+        self.cover_size = self
+            .cover_size
+            .clamp(COVER_SIZE_RANGE.0, COVER_SIZE_RANGE.1);
+        self.sidebar_width = self
+            .sidebar_width
+            .clamp(SIDEBAR_WIDTH_RANGE.0, SIDEBAR_WIDTH_RANGE.1);
         self.details_width = self.details_width.clamp(240, 480);
         self.window_opacity = self.window_opacity.clamp(10, 100);
     }
@@ -90,9 +106,11 @@ mod tests {
             window_blur: false,
             prefer_kepub: false,
             export_folder: Some(dir.path().join("Экспорт książki")),
-            text_size: 18,
-            cover_size: 200,
+            text_size: 24,
+            cover_size: 220,
             details_width: 420,
+            sidebar_width: 240,
+            library_expanded: true,
         };
         settings.save_to(&path).unwrap();
         assert_eq!(UiSettings::load_from(&path).unwrap(), settings);
@@ -117,6 +135,8 @@ mod tests {
         assert_eq!(settings.text_size, 16);
         assert_eq!(settings.cover_size, 160);
         assert_eq!(settings.details_width, 300);
+        assert_eq!(settings.sidebar_width, 188);
+        assert!(!settings.library_expanded);
     }
     #[test]
     fn malformed_appearance_ranges_are_bounded_on_load() {
@@ -124,13 +144,14 @@ mod tests {
         let path = dir.path().join("ui.toml");
         fs::write(
             &path,
-            "text_size = 0\ncover_size = 60000\ndetails_width = 0",
+            "text_size = 0\ncover_size = 60000\ndetails_width = 0\nsidebar_width = 1",
         )
         .unwrap();
         let settings = UiSettings::load_from(&path).unwrap();
         assert_eq!(settings.text_size, 14);
-        assert_eq!(settings.cover_size, 200);
+        assert_eq!(settings.cover_size, 220);
         assert_eq!(settings.details_width, 240);
+        assert_eq!(settings.sidebar_width, 160);
     }
     #[test]
     fn failed_replacement_cleans_temporary_file() {

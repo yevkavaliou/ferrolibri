@@ -1,11 +1,38 @@
+use crate::settings::{COVER_SIZE_RANGE, COVER_SIZE_STEP, TEXT_SIZE_RANGE};
 use crate::{
     app::{Message, State},
     theme,
 };
 use iced::{
     Element, Fill,
-    widget::{button, column, container, pick_list, row, scrollable, slider, text, toggler},
+    widget::{button, column, container, row, scrollable, slider, text, toggler},
 };
+
+/// `−  16  +` for the interface text size.
+fn stepper(state: &State, value: u16) -> iced::widget::Row<'_, Message> {
+    let step = |label: &'static str, target: u16, enabled: bool| {
+        button(
+            text(label)
+                .size(theme::font(state, 14.0))
+                .width(Fill)
+                .align_x(iced::alignment::Horizontal::Center),
+        )
+        .width(30)
+        .padding([2, 0])
+        .style(theme::outline)
+        .on_press_maybe((enabled && !state.closing).then_some(Message::SetTextSize(target)))
+    };
+    row![
+        step("−", value.saturating_sub(1), value > TEXT_SIZE_RANGE.0),
+        text(value.to_string())
+            .size(theme::font(state, 13.0))
+            .width(36)
+            .align_x(iced::alignment::Horizontal::Center),
+        step("+", value + 1, value < TEXT_SIZE_RANGE.1),
+    ]
+    .spacing(6)
+    .align_y(iced::Center)
+}
 
 pub fn view(state: &State) -> Element<'_, Message> {
     let settings = state.visible_settings();
@@ -40,24 +67,27 @@ pub fn view(state: &State) -> Element<'_, Message> {
             state,
             "Text size",
             "Pixels · applies throughout the interface",
-            pick_list(
-                [14u16, 16, 18, 20],
-                Some(settings.text_size),
-                Message::SetTextSize
-            )
-            .text_size(theme::font(state, 13.0))
-            .into()
+            stepper(state, settings.text_size).into()
         ),
         setting_row(
             state,
             "Cover size",
             "Width in pixels · grid and book details",
-            pick_list(
-                [120u16, 160, 200],
-                Some(settings.cover_size),
-                Message::SetCoverSize
-            )
-            .text_size(theme::font(state, 13.0))
+            row![
+                slider(
+                    COVER_SIZE_RANGE.0..=COVER_SIZE_RANGE.1,
+                    settings.cover_size,
+                    Message::SetCoverSize,
+                )
+                .step(COVER_SIZE_STEP)
+                .width(160),
+                text(format!("{} px", settings.cover_size))
+                    .size(theme::font(state, 13.0))
+                    .width(52)
+                    .align_x(iced::alignment::Horizontal::Right),
+            ]
+            .spacing(10)
+            .align_y(iced::Center)
             .into()
         ),
         setting_row(
@@ -75,7 +105,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                         settings.window_opacity,
                         Message::SetWindowOpacity,
                     )
-                    .step(5u8)
+                    .step(1u8)
                     .width(160);
                     if !available {
                         // A slider without a handler cannot be dragged; keep it inert.
@@ -87,7 +117,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 },
                 text(format!("{} %", settings.window_opacity))
                     .size(theme::font(state, 13.0))
-                    .width(44)
+                    .width(52)
                     .align_x(iced::alignment::Horizontal::Right),
             ]
             .spacing(10)
@@ -118,8 +148,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
     .spacing(24);
     column![
         container(text("Settings").size(theme::font(state, 16.0)))
-            .padding([2, 12])
-            .height(36),
+            .padding(super::book_list::header_padding())
+            .height(36.0 + theme::HEADER_TOP),
         scrollable(container(rows).padding(20).width(Fill))
             .direction(theme::vbar())
             .style(theme::scroll(state)),

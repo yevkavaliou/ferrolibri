@@ -4,12 +4,13 @@ use crate::{
 };
 use iced::{
     Alignment, Element, Fill,
-    widget::{Space, button, column, container, row, text, tooltip},
+    widget::{Space, button, column, container, row, text},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Layout {
     pub sidebar: bool,
+    pub sidebar_width: f32,
     pub details: bool,
     pub details_available: bool,
     pub details_width: f32,
@@ -20,6 +21,7 @@ impl Layout {
         let details_available = !setup && matches!(state.screen, Screen::Home { .. });
         Self {
             sidebar: !setup && state.visible_settings().sidebar_visible,
+            sidebar_width: state.sidebar_width(),
             details: details_available && state.visible_settings().details_visible,
             details_available,
             details_width: state.details_width() + theme::DETAILS_GRIP,
@@ -28,7 +30,7 @@ impl Layout {
     pub fn content_width(self, width: f32) -> f32 {
         width
             - if self.sidebar {
-                theme::SIDEBAR_WIDTH
+                self.sidebar_width
             } else {
                 0.0
             }
@@ -53,22 +55,14 @@ fn icon_button(
     } else {
         theme::DARK.text_secondary
     };
-    tooltip(
+    super::tip(
         button(icons::tinted(icon, color))
             .padding([4, 6])
             .style(theme::quiet)
             .on_press_maybe(message),
         text(label.to_string()).size(theme::font(state, 12.0)),
-        tooltip::Position::Bottom,
+        super::Position::Bottom,
     )
-    .into()
-}
-fn vertical_line() -> Element<'static, Message> {
-    container(Space::new())
-        .width(theme::LINE_WIDTH)
-        .height(Fill)
-        .style(theme::line)
-        .into()
 }
 fn nav(
     state: &State,
@@ -137,12 +131,12 @@ fn facet<'a>(
     filter: Filter,
     active: bool,
 ) -> Element<'a, Message> {
-    tooltip(
+    super::tip(
         button(
             row![
                 text(super::book_list::ellipsis(
                     label,
-                    62.0,
+                    state.sidebar_width() - 86.0,
                     theme::font(state, 12.0)
                 ))
                 .size(theme::font(state, 12.0))
@@ -173,9 +167,8 @@ fn facet<'a>(
         })
         .on_press(Message::Navigate(Screen::Home { filter })),
         text(label).size(theme::font(state, 12.0)),
-        tooltip::Position::Right,
+        super::Position::Right,
     )
-    .into()
 }
 fn sidebar(state: &State) -> Element<'_, Message> {
     use crate::app::FacetGroup;
@@ -192,7 +185,7 @@ fn sidebar(state: &State) -> Element<'_, Message> {
                     filter: Filter::All
                 }
         ),
-        tooltip(
+        super::tip(
             nav(
                 state,
                 icons::SEARCH,
@@ -205,18 +198,18 @@ fn sidebar(state: &State) -> Element<'_, Message> {
                 crate::keymap::Command::OpenSearch
             ))
             .size(theme::font(state, 12.0)),
-            tooltip::Position::Right,
+            super::Position::Right,
         ),
         group(
             state,
             "Library",
-            state.sidebar_expansion.library,
+            state.visible_settings().library_expanded,
             FacetGroup::Library,
             8.0
         ),
     ]
     .spacing(1);
-    if state.sidebar_expansion.library {
+    if state.visible_settings().library_expanded {
         items = items.push(group(
             state,
             "Formats",
@@ -258,10 +251,11 @@ fn sidebar(state: &State) -> Element<'_, Message> {
         .jobs
         .values()
         .filter(|j| {
-            matches!(
-                j.state,
-                rulibre_core::jobs::JobState::Waiting | rulibre_core::jobs::JobState::Running
-            )
+            super::jobs::listed(j)
+                && matches!(
+                    j.state,
+                    rulibre_core::jobs::JobState::Waiting | rulibre_core::jobs::JobState::Running
+                )
         })
         .count();
     let jobs = button(
@@ -299,6 +293,7 @@ fn sidebar(state: &State) -> Element<'_, Message> {
         Screen::Settings,
         state.screen == Screen::Settings,
     ));
+    let dragging = state.sidebar_drag.is_some();
     row![
         container(
             iced::widget::scrollable(items)
@@ -308,9 +303,32 @@ fn sidebar(state: &State) -> Element<'_, Message> {
         .padding([4, 6])
         .width(Fill)
         .height(Fill),
-        vertical_line()
+        // The whole grip is draggable; the divider is a 1 px line (a 0.5 px quad
+        // on a fractional position vanishes), 2 px in the accent colour while dragging.
+        iced::widget::mouse_area(
+            container(
+                container(Space::new())
+                    .width(if dragging { 2.0 } else { 1.0 })
+                    .height(Fill)
+                    .style(move |_| container::Style {
+                        background: Some(
+                            if dragging {
+                                theme::DARK.accent
+                            } else {
+                                theme::DARK.line
+                            }
+                            .into()
+                        ),
+                        ..Default::default()
+                    })
+            )
+            .align_left(theme::SIDEBAR_GRIP)
+            .height(Fill)
+        )
+        .interaction(iced::mouse::Interaction::ResizingHorizontally)
+        .on_press(Message::StartSidebarResize),
     ]
-    .width(theme::SIDEBAR_WIDTH)
+    .width(state.sidebar_width())
     .height(Fill)
     .into()
 }
@@ -322,6 +340,7 @@ fn details(state: &State) -> Element<'_, Message> {
         theme::DARK.panel
     };
     let dragging = state.details_drag.is_some();
+    let tint = state.cover_colors().map(|colors| colors.tint);
     row![
         // The whole grip stays draggable; only a 1 px line is drawn (a 0.5 px quad
         // on a fractional position vanishes), 2 px in the accent colour while dragging.
@@ -351,10 +370,13 @@ fn details(state: &State) -> Element<'_, Message> {
             .padding([14, 12])
             .width(Fill)
             .height(Fill)
-            .style(move |theme| {
-                let mut style = theme::panel(theme);
-                style.background = Some(panel.scale_alpha(alpha).into());
-                style
+            .style(move |theme| match tint {
+                Some(tint) => theme::tinted_panel(tint, panel, alpha)(theme),
+                None => {
+                    let mut style = theme::panel(theme);
+                    style.background = Some(panel.scale_alpha(alpha).into());
+                    style
+                }
             })
     ]
     .width(state.details_width() + theme::DETAILS_GRIP)
@@ -506,6 +528,37 @@ pub fn view<'a>(state: &'a State, content: Element<'a, Message>) -> Element<'a, 
     } else {
         base.into()
     };
+    let base: Element<'_, Message> =
+        if state.convert_menu && layout.details_available && !state.selection.selected.is_empty() {
+            iced::widget::stack![
+                base,
+                iced::widget::mouse_area(container(Space::new()).width(Fill).height(Fill))
+                    .on_press(Message::CloseConvertMenu),
+                container(
+                    iced::widget::mouse_area(super::convert::menu(state)).on_press(Message::Ignore)
+                )
+                .padding(iced::Padding {
+                    top: theme::TOOLBAR_HEIGHT
+                        + theme::LINE_WIDTH
+                        + theme::HEADER_TOP
+                        + state.row_height(),
+                    right: 12.0
+                        + if layout.details {
+                            layout.details_width
+                        } else {
+                            0.0
+                        },
+                    bottom: 0.0,
+                    left: 0.0,
+                })
+                .width(Fill)
+                .height(Fill)
+                .align_right(Fill),
+            ]
+            .into()
+        } else {
+            base
+        };
     let base = if state.export_prompt {
         iced::widget::stack![
             base,

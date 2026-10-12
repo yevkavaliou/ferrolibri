@@ -4,11 +4,15 @@ use iced::{
     widget::{button, checkbox, container, scrollable, text_input},
 };
 
-pub const SIDEBAR_WIDTH: f32 = 148.0;
+pub const SIDEBAR_GRIP: f32 = 7.0;
 pub const DETAILS_WIDTH: f32 = 300.0;
 pub const DETAILS_GRIP: f32 = 7.0;
 pub const TOOLBAR_HEIGHT: f32 = 34.0;
-pub const BOTTOM_HEIGHT: f32 = 46.0;
+pub const BOTTOM_HEIGHT: f32 = 76.0;
+/// Extra space above the title row of a screen.
+pub const HEADER_TOP: f32 = 12.0;
+/// How long the pointer rests on a control before its hint appears.
+pub const TOOLTIP_DELAY: std::time::Duration = std::time::Duration::from_millis(1500);
 pub const LINE_WIDTH: f32 = 0.5;
 pub const SPACE: f32 = 8.0;
 pub const CONTENT_PADDING: f32 = 12.0;
@@ -109,6 +113,19 @@ pub fn line(_: &Theme) -> container::Style {
         ..Default::default()
     }
 }
+/// Hints sit over arbitrary content and a translucent window: always opaque.
+pub fn tooltip(_: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Color::from_rgb8(41, 45, 53).into()),
+        text_color: Some(DARK.text_primary),
+        border: Border {
+            color: Color::from_rgb8(70, 76, 90),
+            width: 1.0,
+            radius: 5.0.into(),
+        },
+        ..Default::default()
+    }
+}
 pub fn card(theme: &Theme) -> container::Style {
     container::Style {
         border: Border {
@@ -158,6 +175,52 @@ pub fn button_style(kind: Button, status: button::Status) -> button::Style {
             radius: RADIUS.into(),
         },
         ..Default::default()
+    }
+}
+/// The primary button in a cover's accent; label colour is chosen for contrast.
+pub fn primary_tinted(
+    colors: crate::palette::CoverColors,
+) -> impl Fn(&Theme, button::Status) -> button::Style + 'static {
+    move |_, status| {
+        let mut style = button_style(Button::Primary, status);
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let accent = if hovered {
+            // Toward the label colour: lighter under a dark label, darker under a light one.
+            mix(colors.accent, colors.on_accent, 0.12)
+        } else {
+            colors.accent
+        };
+        if status == button::Status::Disabled {
+            style.background = Some(colors.accent.scale_alpha(0.3).into());
+        } else {
+            style.background = Some(accent.into());
+            style.text_color = colors.on_accent;
+        }
+        style
+    }
+}
+fn mix(a: Color, b: Color, amount: f32) -> Color {
+    Color::from_rgb(
+        a.r + (b.r - a.r) * amount,
+        a.g + (b.g - a.g) * amount,
+        a.b + (b.b - a.b) * amount,
+    )
+}
+/// Details panel fill: the cover's tint fading into the normal panel colour.
+pub fn tinted_panel(
+    tint: Color,
+    base: Color,
+    alpha: f32,
+) -> impl Fn(&Theme) -> container::Style + 'static {
+    move |theme| {
+        let mut style = panel(theme);
+        // iced angles are clockwise from "up": PI points the gradient downwards.
+        let gradient = iced::gradient::Linear::new(iced::Radians::PI)
+            .add_stop(0.0, tint.scale_alpha(alpha))
+            .add_stop(0.75, mix(tint, base, 0.7).scale_alpha(alpha))
+            .add_stop(1.0, base.scale_alpha(alpha));
+        style.background = Some(iced::Background::Gradient(gradient.into()));
+        style
     }
 }
 pub fn outline(_: &Theme, status: button::Status) -> button::Style {

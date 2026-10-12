@@ -43,19 +43,12 @@ pub enum FacetGroup {
     Formats,
     Authors,
 }
+/// Open groups of the sidebar. The Library group lives in `UiSettings`
+/// (it is remembered between launches); these two last for the session.
+#[derive(Default)]
 pub struct SidebarExpansion {
-    pub library: bool,
     pub formats: bool,
     pub authors: bool,
-}
-impl Default for SidebarExpansion {
-    fn default() -> Self {
-        Self {
-            library: true,
-            formats: false,
-            authors: false,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -100,6 +93,8 @@ pub struct State {
     pub pointer_x: f32,
     pub details_drag: Option<(f32, f32)>,
     pub dragged_details_width: Option<f32>,
+    pub sidebar_drag: Option<(f32, f32)>,
+    pub dragged_sidebar_width: Option<f32>,
     cover_errors: std::collections::BTreeSet<BookId>,
     pub sidebar_expansion: SidebarExpansion,
     pub facet_order: Vec<BookId>,
@@ -141,6 +136,12 @@ impl State {
     pub fn row_height(&self) -> f32 {
         theme::font(self, crate::catalog::ROW_HEIGHT)
     }
+    pub fn sidebar_width(&self) -> f32 {
+        let (min, max) = crate::settings::SIDEBAR_WIDTH_RANGE;
+        self.dragged_sidebar_width
+            .unwrap_or(self.visible_settings().sidebar_width as f32)
+            .clamp(min as f32, max as f32)
+    }
     pub fn details_width(&self) -> f32 {
         let window = if self.window_width > 0.0 {
             self.window_width
@@ -148,7 +149,7 @@ impl State {
             1100.0
         };
         let sidebar = if self.visible_settings().sidebar_visible {
-            theme::SIDEBAR_WIDTH
+            self.sidebar_width()
         } else {
             0.0
         };
@@ -168,6 +169,14 @@ impl State {
             &self.catalog,
             &self.facet_order,
         )
+    }
+    /// Colours of the one selected book's cover; several books have no single cover.
+    pub fn cover_colors(&self) -> Option<crate::palette::CoverColors> {
+        let mut selected = self.selection.selected.iter();
+        match (selected.next(), selected.next()) {
+            (Some(id), None) => self.covers.colors(id),
+            _ => None,
+        }
     }
     pub fn visible_settings(&self) -> &UiSettings {
         self.requested_settings.as_ref().unwrap_or(&self.settings)
@@ -221,6 +230,7 @@ pub enum Message {
     Send,
     RefreshBackends,
     ToggleConvert,
+    CloseConvertMenu,
     Ignore,
     Convert(Format),
     CancelConvert,
@@ -265,7 +275,8 @@ pub enum Message {
     SetTextSize(u16),
     SetCoverSize(u16),
     StartDetailsResize,
-    FinishDetailsResize,
+    StartSidebarResize,
+    FinishPaneResize,
     PointerMoved(f32),
     WindowResized(iced::Size),
     SetWindowOpacity(u8),
@@ -394,6 +405,9 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             if let Some((start, width)) = state.details_drag {
                 state.dragged_details_width = Some(width + start - x);
             }
+            if let Some((start, width)) = state.sidebar_drag {
+                state.dragged_sidebar_width = Some(width + x - start);
+            }
         }
         Message::StartDetailsResize
             if matches!(state.screen, Screen::Home { .. }) && !state.closing =>
@@ -401,12 +415,27 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             state.details_drag = Some((state.pointer_x, state.details_width()));
         }
         Message::StartDetailsResize => {}
-        Message::FinishDetailsResize => {
-            if state.details_drag.take().is_some() {
-                let width = state.details_width().round() as u16;
+        Message::StartSidebarResize if state.screen != Screen::Setup && !state.closing => {
+            state.sidebar_drag = Some((state.pointer_x, state.sidebar_width()));
+        }
+        Message::StartSidebarResize => {}
+        Message::FinishPaneResize => {
+            let details = state.details_drag.take().is_some();
+            let sidebar = state.sidebar_drag.take().is_some();
+            if details || sidebar {
+                // Read both widths before either drag value is cleared: the
+                // details limit depends on the sidebar width.
+                let details_width = state.details_width().round() as u16;
+                let sidebar_width = state.sidebar_width().round() as u16;
                 state.dragged_details_width = None;
+                state.dragged_sidebar_width = None;
                 let mut settings = state.visible_settings().clone();
-                settings.details_width = width;
+                if details {
+                    settings.details_width = details_width;
+                }
+                if sidebar {
+                    settings.sidebar_width = sidebar_width;
+                }
                 return update(state, Message::SaveSettings(settings), services);
             }
         }
@@ -440,6 +469,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         Message::RefreshBackends => {}
         Message::Ignore => {}
         Message::ToggleConvert => state.convert_menu = !state.convert_menu,
+        Message::CloseConvertMenu => state.convert_menu = false,
         Message::CancelConvert => {
             state.pending_conversion = None;
             state.export_prompt = false;
@@ -1068,9 +1098,14 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             }
             return scroll;
         }
+        Message::ToggleFacetGroup(FacetGroup::Library) => {
+            let mut settings = state.visible_settings().clone();
+            settings.library_expanded = !settings.library_expanded;
+            return update(state, Message::SaveSettings(settings), services);
+        }
         Message::ToggleFacetGroup(group) => {
             let value = match group {
-                FacetGroup::Library => &mut state.sidebar_expansion.library,
+                FacetGroup::Library => return Task::none(),
                 FacetGroup::Formats => &mut state.sidebar_expansion.formats,
                 FacetGroup::Authors => &mut state.sidebar_expansion.authors,
             };
@@ -1188,6 +1223,8 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             state.modifiers = iced::keyboard::Modifiers::empty();
             state.details_drag = None;
             state.dragged_details_width = None;
+            state.sidebar_drag = None;
+            state.dragged_sidebar_width = None;
         }
         Message::Keyboard(event) => return handle_keyboard(state, event, services),
         Message::ListScrolled { offset, height } => {
@@ -1827,13 +1864,34 @@ fn poll(state: &mut State, services: &dyn Services) {
             }
         }
     }
-    while state.finished_jobs.len() > crate::widgets::jobs::HISTORY_LIMIT {
-        let id = state.finished_jobs.pop_front().unwrap();
-        state.jobs.remove(&id);
-        state.results.remove(&id);
-        state.job_messages.remove(&id);
-        state.send_readers.remove(&id);
-        state.send_devices.remove(&id);
+    // Unlisted housekeeping jobs (metadata, converter probe) must not push the
+    // jobs the user can see out of the history, so each kind keeps its own limit.
+    for listed in [true, false] {
+        let in_group = |state: &State, id: &JobId| {
+            state
+                .jobs
+                .get(id)
+                .is_none_or(|job| crate::widgets::jobs::listed(job) == listed)
+        };
+        while state
+            .finished_jobs
+            .iter()
+            .filter(|id| in_group(state, id))
+            .count()
+            > crate::widgets::jobs::HISTORY_LIMIT
+        {
+            let position = state
+                .finished_jobs
+                .iter()
+                .position(|id| in_group(state, id))
+                .unwrap();
+            let id = state.finished_jobs.remove(position).unwrap();
+            state.jobs.remove(&id);
+            state.results.remove(&id);
+            state.job_messages.remove(&id);
+            state.send_readers.remove(&id);
+            state.send_devices.remove(&id);
+        }
     }
 }
 pub fn subscription(state: &State) -> Subscription<Message> {
@@ -1859,7 +1917,7 @@ pub fn subscription(state: &State) -> Subscription<Message> {
                 Some(Message::PointerMoved(position.x))
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
-                Some(Message::FinishDetailsResize)
+                Some(Message::FinishPaneResize)
             }
             iced::Event::Window(iced::window::Event::Resized(size)) => {
                 Some(Message::WindowResized(size))
@@ -2126,7 +2184,7 @@ mod tests {
             scan_status: ScanStatus::Ready,
             ..Default::default()
         };
-        state.sidebar_expansion.library = false;
+        assert!(!state.visible_settings().library_expanded);
         for group in [
             FacetGroup::Library,
             FacetGroup::Formats,
@@ -2135,7 +2193,7 @@ mod tests {
             step(&mut state, Message::ToggleFacetGroup(group), &fake);
         }
         assert!(
-            state.sidebar_expansion.library
+            state.visible_settings().library_expanded
                 && state.sidebar_expansion.formats
                 && state.sidebar_expansion.authors
         );
@@ -3252,7 +3310,7 @@ mod tests {
             },
             ..Default::default()
         };
-        assert_eq!(Layout::for_state(&state).content_width(760.0), 305.0);
+        assert_eq!(Layout::for_state(&state).content_width(760.0), 265.0);
         step(&mut state, Message::ToggleSidebar, &fake);
         assert_eq!(Layout::for_state(&state).content_width(760.0), 453.0);
         for screen in [
@@ -3295,12 +3353,12 @@ mod tests {
         step(&mut state, Message::PointerMoved(460.0), &fake);
         step(&mut state, Message::StartDetailsResize, &fake);
         step(&mut state, Message::PointerMoved(350.0), &fake);
-        assert_eq!(state.details_width(), 409.0);
+        assert_eq!(state.details_width(), 369.0);
         assert!(fake.saves.lock().unwrap().is_empty());
         step(&mut state, Message::PointerMoved(100.0), &fake);
-        assert_eq!(state.details_width(), 409.0);
+        assert_eq!(state.details_width(), 369.0);
         assert!(crate::widgets::shell::Layout::for_state(&state).content_width(760.0) >= 180.0);
-        step(&mut state, Message::FinishDetailsResize, &fake);
+        step(&mut state, Message::FinishPaneResize, &fake);
         assert!(state.details_drag.is_none());
         assert_eq!(fake.saves.lock().unwrap().len(), 1);
         step(&mut state, Message::SetTextSize(20), &fake);
@@ -3317,7 +3375,7 @@ mod tests {
         let last = fake.saves.lock().unwrap()[1].clone();
         assert_eq!(
             (last.text_size, last.cover_size, last.details_width),
-            (20, 200, 409)
+            (20, 200, 369)
         );
         step(
             &mut state,
@@ -3331,7 +3389,7 @@ mod tests {
         step(&mut state, Message::StartDetailsResize, &fake);
         step(&mut state, Message::PointerMoved(600.0), &fake);
         assert_eq!(state.details_width(), 240.0);
-        step(&mut state, Message::FinishDetailsResize, &fake);
+        step(&mut state, Message::FinishPaneResize, &fake);
         let failed = state.visible_settings().clone();
         step(
             &mut state,
@@ -3341,20 +3399,88 @@ mod tests {
             },
             &fake,
         );
-        assert_eq!(state.details_width(), 369.0);
+        assert_eq!(state.details_width(), 329.0);
         assert!(state.toasts.last().unwrap().error);
         step(
             &mut state,
             Message::WindowResized(iced::Size::new(1100.0, 700.0)),
             &fake,
         );
-        assert_eq!(state.details_width(), 409.0);
+        assert_eq!(state.details_width(), 369.0);
         step(&mut state, Message::PointerMoved(400.0), &fake);
         step(&mut state, Message::StartDetailsResize, &fake);
         step(&mut state, Message::PointerMoved(500.0), &fake);
         step(&mut state, Message::ResetModifiers, &fake);
         assert!(state.details_drag.is_none());
-        assert_eq!(state.details_width(), 409.0);
+        assert_eq!(state.details_width(), 369.0);
+    }
+    #[test]
+    fn sidebar_resizes_within_bounds_and_is_saved() {
+        let fake = Fake::default();
+        let mut state = State {
+            screen: Screen::Home {
+                filter: Filter::All,
+            },
+            window_width: 1100.0,
+            ..Default::default()
+        };
+        assert_eq!(state.sidebar_width(), 188.0);
+        step(&mut state, Message::PointerMoved(200.0), &fake);
+        step(&mut state, Message::StartSidebarResize, &fake);
+        step(&mut state, Message::PointerMoved(260.0), &fake);
+        assert_eq!(state.sidebar_width(), 248.0);
+        step(&mut state, Message::PointerMoved(900.0), &fake);
+        assert_eq!(state.sidebar_width(), 260.0);
+        step(&mut state, Message::PointerMoved(0.0), &fake);
+        assert_eq!(state.sidebar_width(), 160.0);
+        step(&mut state, Message::PointerMoved(230.0), &fake);
+        step(&mut state, Message::FinishPaneResize, &fake);
+        assert!(state.sidebar_drag.is_none());
+        assert_eq!(
+            fake.saves.lock().unwrap().last().unwrap().sidebar_width,
+            218
+        );
+        assert_eq!(state.sidebar_width(), 218.0);
+        // The hidden-sidebar and setup screens cannot start a drag.
+        step(&mut state, Message::Navigate(Screen::Setup), &fake);
+        step(&mut state, Message::StartSidebarResize, &fake);
+        assert!(state.sidebar_drag.is_none());
+    }
+    #[test]
+    fn library_group_state_is_remembered_and_collapsed_by_default() {
+        let fake = Fake::default();
+        let mut state = State {
+            screen: Screen::Home {
+                filter: Filter::All,
+            },
+            ..Default::default()
+        };
+        assert!(!state.visible_settings().library_expanded);
+        step(
+            &mut state,
+            Message::ToggleFacetGroup(FacetGroup::Library),
+            &fake,
+        );
+        assert!(fake.saves.lock().unwrap().last().unwrap().library_expanded);
+        step(
+            &mut state,
+            Message::ToggleFacetGroup(FacetGroup::Library),
+            &fake,
+        );
+        assert!(!state.visible_settings().library_expanded);
+    }
+    #[test]
+    fn text_and_cover_sizes_are_bounded_by_their_controls() {
+        let fake = Fake::default();
+        let mut state = State::default();
+        step(&mut state, Message::SetTextSize(99), &fake);
+        assert_eq!(state.visible_settings().text_size, 24);
+        step(&mut state, Message::SetTextSize(1), &fake);
+        assert_eq!(state.visible_settings().text_size, 14);
+        step(&mut state, Message::SetCoverSize(999), &fake);
+        assert_eq!(state.visible_settings().cover_size, 220);
+        step(&mut state, Message::SetCoverSize(0), &fake);
+        assert_eq!(state.visible_settings().cover_size, 120);
     }
     fn reply(id: u64, title: &str) -> JobUpdate {
         JobUpdate {

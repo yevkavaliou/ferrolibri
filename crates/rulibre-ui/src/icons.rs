@@ -33,6 +33,7 @@ pub const MAXIMIZE: &[u8] = icon!(r#"<rect x="5" y="5" width="14" height="14" rx
 pub const X: &[u8] = icon!(r#"<path d="m18 6-12 12M6 6l12 12"/>"#);
 pub const REFRESH: &[u8] =
     icon!(r#"<path d="M3 12a9 9 0 0 1 15-6l3 3M21 3v6h-6m6 3a9 9 0 0 1-15 6l-3-3m6 0H3v6"/>"#);
+pub const CONVERT: &[u8] = icon!(r#"<path d="m16 3 4 4-4 4M20 7H4m4 14-4-4 4-4M4 17h16"/>"#);
 pub fn tinted(data: &'static [u8], color: Color) -> svg::Svg<'static> {
     svg(svg::Handle::from_memory(data))
         .width(16)

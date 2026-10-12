@@ -140,7 +140,10 @@ fn click_selects_a_book_and_ctrl_click_adds_the_next_one() {
     assert_eq!(state.selection.selected.len(), 1);
     assert!(state.selection.selected.contains(&state.catalog.order[0]));
     let mut ui = iced_test::simulator(app::view(&state));
-    assert!(ui.find("Convert ▾").is_ok(), "details pane opens");
+    assert!(
+        ui.find("Convert").is_ok(),
+        "convert control is in the header"
+    );
     drop(ui);
     // The app learns about Ctrl from the keyboard subscription, not from the click.
     modifiers(&mut state, &services, keyboard::Modifiers::CTRL);
@@ -150,7 +153,6 @@ fn click_selects_a_book_and_ctrl_click_adds_the_next_one() {
     assert_eq!(state.selection.selected.len(), 2);
     let mut ui = iced_test::simulator(app::view(&state));
     assert!(ui.find("2 selected").is_ok());
-    assert!(ui.find("Convert 2 books ▾").is_ok());
     drop(ui);
     // A second Ctrl+click on a selected book removes it again.
     interact(&mut state, &services, |ui| {
@@ -200,16 +202,45 @@ fn the_details_toggle_in_the_toolbar_hides_and_restores_the_pane() {
         let _ = ui.simulate(iced_test::simulator::click());
     });
     assert!(!state.visible_settings().details_visible);
-    let mut ui = iced_test::simulator(app::view(&state));
-    assert!(ui.find("Convert ▾").is_err());
-    drop(ui);
+    assert!(!rulibre_ui::widgets::shell::Layout::for_state(&state).details);
     interact(&mut state, &services, |ui| {
         ui.point_at(toggle);
         let _ = ui.simulate(iced_test::simulator::click());
     });
     assert!(state.visible_settings().details_visible);
+    assert!(rulibre_ui::widgets::shell::Layout::for_state(&state).details);
+    services.shutdown();
+}
+
+#[test]
+fn convert_menu_opens_from_the_header_and_closes_on_click_away() {
+    headless();
+    let fixture = test_support::Fixture::new();
+    let services = services(&fixture);
+    let mut state = home(&fixture);
+    {
+        let mut ui = iced_test::simulator(app::view(&state));
+        assert!(ui.find("Convert").is_ok());
+    }
+    interact(&mut state, &services, |ui| {
+        ui.click("Convert").unwrap();
+    });
+    assert!(!state.convert_menu, "nothing is selected yet");
+    interact(&mut state, &services, |ui| {
+        ui.click(first_title(&fixture).as_str()).unwrap();
+    });
+    interact(&mut state, &services, |ui| {
+        ui.click("Convert").unwrap();
+    });
+    assert!(state.convert_menu);
+    {
+        let mut ui = iced_test::simulator(app::view(&state));
+        assert!(ui.find("Convert to").is_ok());
+        assert!(ui.find("Refresh converters").is_ok());
+    }
+    let _ = app::update(&mut state, Message::CloseConvertMenu, &services);
     let mut ui = iced_test::simulator(app::view(&state));
-    assert!(ui.find("Convert ▾").is_ok());
+    assert!(ui.find("Convert to").is_err());
     services.shutdown();
 }
 fn first_title(fixture: &test_support::Fixture) -> String {

@@ -13,6 +13,11 @@ pub use crate::services::jobs::HISTORY_LIMIT;
 pub fn unfinished(job: &JobView) -> bool {
     matches!(job.state, JobState::Waiting | JobState::Running)
 }
+/// Housekeeping such as reading a book's metadata or probing for converters
+/// runs as a job too, but is not something the user asked for: keep it out of the list.
+pub fn listed(job: &JobView) -> bool {
+    !matches!(job.kind, JobKind::Metadata | JobKind::Backends)
+}
 pub fn percentage(job: &JobView) -> Option<f32> {
     if job.kind != JobKind::Send || job.stage != Some(Stage::Copying) {
         return None;
@@ -97,14 +102,14 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 state
                     .jobs
                     .values()
-                    .any(|j| !unfinished(j))
+                    .any(|j| listed(j) && !unfinished(j))
                     .then_some(Message::ClearFinished)
             )
     ]
     .spacing(8)
     .align_y(iced::Alignment::Center);
     let mut body = column![].spacing(4);
-    if state.jobs.is_empty() {
+    if !state.jobs.values().any(listed) {
         body = body.push(
             container(
                 text("No jobs yet.\nSend or convert a book to start one.")
@@ -119,7 +124,11 @@ pub fn view(state: &State) -> Element<'_, Message> {
             ("Running", JobState::Running),
             ("Up next", JobState::Waiting),
         ] {
-            let jobs: Vec<_> = state.jobs.values().filter(|j| j.state == group).collect();
+            let jobs: Vec<_> = state
+                .jobs
+                .values()
+                .filter(|j| listed(j) && j.state == group)
+                .collect();
             if !jobs.is_empty() {
                 body = body.push(
                     container(
@@ -139,6 +148,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
             .iter()
             .rev()
             .filter_map(|id| state.jobs.get(id))
+            .filter(|job| listed(job))
             .collect();
         if !done.is_empty() {
             body = body.push(
@@ -155,7 +165,9 @@ pub fn view(state: &State) -> Element<'_, Message> {
         }
     }
     column![
-        container(header).padding([2, 12]).height(36),
+        container(header)
+            .padding(super::book_list::header_padding())
+            .height(36.0 + theme::HEADER_TOP),
         scrollable(body)
             .height(Fill)
             .direction(theme::vbar())
@@ -167,6 +179,25 @@ pub fn view(state: &State) -> Element<'_, Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_user_visible_jobs_are_listed() {
+        let mut job = JobView {
+            id: crate::services::jobs::JobId(1),
+            title: "Book".into(),
+            kind: JobKind::Metadata,
+            state: JobState::Succeeded,
+            stage: None,
+            progress: None,
+            error: None,
+        };
+        assert!(!listed(&job));
+        job.kind = JobKind::Backends;
+        assert!(!listed(&job));
+        for kind in [JobKind::Scan, JobKind::Convert, JobKind::Send] {
+            job.kind = kind;
+            assert!(listed(&job));
+        }
+    }
     #[test]
     fn progress_only_when_copying_and_bytes_are_clamped() {
         let mut job = JobView {

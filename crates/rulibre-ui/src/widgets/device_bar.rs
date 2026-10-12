@@ -4,9 +4,7 @@ use crate::{
 };
 use iced::{
     Alignment, Element, Fill,
-    widget::{
-        Space, button, column, container, pick_list, row, scrollable, text, text_input, tooltip,
-    },
+    widget::{Space, button, column, container, pick_list, row, scrollable, text, text_input},
 };
 use rulibre_core::device::DeviceKind;
 
@@ -66,15 +64,14 @@ pub fn bar(state: &State) -> Element<'_, Message> {
             name = name.push(icons::tinted(icons::CHEVRON_DOWN, theme::DARK.text_primary));
         }
         let name: Element<'_, Message> = if multiple {
-            tooltip(
+            super::tip(
                 button(name)
                     .style(theme::quiet)
                     .padding([4, 6])
                     .on_press(Message::ToggleReaderMenu),
                 text("Choose reader").size(theme::font(state, 12.0)),
-                tooltip::Position::Top,
+                super::Position::Top,
             )
-            .into()
         } else {
             name.into()
         };
@@ -117,19 +114,19 @@ pub fn bar(state: &State) -> Element<'_, Message> {
                         .color(theme::DARK.text_secondary),
                 );
             }
-            contents = contents.push(tooltip(
+            contents = contents.push(super::tip(
                 location,
                 text(full).size(theme::font(state, 12.0)),
-                tooltip::Position::Top,
+                super::Position::Top,
             ));
             if !multiple && !reader.is_mtp() {
-                contents = contents.push(tooltip(
+                contents = contents.push(super::tip(
                     button(icons::view(icons::FOLDER))
                         .style(theme::quiet)
                         .padding(3)
                         .on_press(Message::ManualReader),
                     text("Select folder manually…").size(theme::font(state, 12.0)),
-                    tooltip::Position::Top,
+                    super::Position::Top,
                 ));
             }
         }
@@ -143,7 +140,7 @@ pub fn bar(state: &State) -> Element<'_, Message> {
                     .map(|_| "Reader is read-only")
             });
         if let Some(warning) = warning {
-            contents = contents.push(tooltip(
+            contents = contents.push(super::tip(
                 text(if compact {
                     "!".into()
                 } else {
@@ -152,7 +149,7 @@ pub fn bar(state: &State) -> Element<'_, Message> {
                 .size(theme::font(state, 11.0))
                 .color(theme::DARK.warning),
                 text(warning.to_owned()).size(theme::font(state, 12.0)),
-                tooltip::Position::Top,
+                super::Position::Top,
             ));
         }
         contents = contents.push(Space::new().width(Fill));
@@ -208,17 +205,20 @@ pub fn bar(state: &State) -> Element<'_, Message> {
                 && !state.library_loading
                 && !state.closing;
             let send = button(text(label).size(theme::font(state, 12.0)))
-                .style(theme::primary)
                 .padding([3, 9])
                 .on_press_maybe(enabled.then_some(Message::Send));
-            contents = contents.push(tooltip(
+            let send = match state.cover_colors() {
+                Some(colors) => send.style(theme::primary_tinted(colors)),
+                None => send.style(theme::primary),
+            };
+            contents = contents.push(super::tip(
                 send,
                 text(match send_blocker(state) {
                     Some(reason) => reason.to_string(),
                     None => crate::keymap::tip("Send to reader", crate::keymap::Command::Send),
                 })
                 .size(theme::font(state, 12.0)),
-                tooltip::Position::Top,
+                super::Position::Top,
             ));
         } else if multiple {
             contents = contents.push(
@@ -227,12 +227,12 @@ pub fn bar(state: &State) -> Element<'_, Message> {
                     .color(theme::DARK.text_muted),
             );
         } else {
-            contents = contents.push(tooltip(
+            contents = contents.push(super::tip(
                 button(text("Select folder manually…").size(theme::font(state, 12.0)))
                     .style(theme::quiet)
                     .on_press(Message::ManualReader),
                 text("Connect a reader to send books").size(theme::font(state, 12.0)),
-                tooltip::Position::Top,
+                super::Position::Top,
             ));
         }
         container(contents.width(Fill))

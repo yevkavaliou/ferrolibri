@@ -6,9 +6,7 @@ use crate::{
 };
 use iced::{
     Alignment, Element, Fill, Length,
-    widget::{
-        Space, button, column, container, responsive, row, scrollable, text, text_input, tooltip,
-    },
+    widget::{Space, button, column, container, responsive, row, scrollable, text, text_input},
 };
 pub fn id() -> iced::widget::Id {
     iced::widget::Id::new("home-books")
@@ -38,12 +36,11 @@ fn format_tags<'a>(state: &State, labels: &'a str) -> Element<'a, Message> {
                 .color(theme::DARK.text_muted),
         );
     }
-    tooltip(
+    super::tip(
         container(tags).width(84),
         text(labels).size(theme::font(state, 12.0)),
-        tooltip::Position::Top,
+        super::Position::Top,
     )
-    .into()
 }
 pub(super) fn ellipsis(value: &str, width: f32, size: f32) -> String {
     type TextCache = std::collections::HashMap<String, ((u32, u32), String)>;
@@ -113,6 +110,15 @@ fn measure_ellipsis(value: &str, width: f32, size: f32) -> String {
     }
     format!("{}…", &value[..boundaries[low]])
 }
+/// Title rows leave extra room above the text.
+pub fn header_padding() -> iced::Padding {
+    iced::Padding {
+        top: 2.0 + theme::HEADER_TOP,
+        right: 12.0,
+        bottom: 2.0,
+        left: 12.0,
+    }
+}
 pub fn view(state: &State) -> Element<'_, Message> {
     let search = state.screen == Screen::Search;
     let grid_preview = state.visible_settings().view == crate::settings::ViewMode::Grid && !search;
@@ -145,6 +151,9 @@ pub fn view(state: &State) -> Element<'_, Message> {
             .padding([3, 6])
             .on_press(Message::ShowWarnings),
         );
+    }
+    if !search {
+        heading = heading.push(super::convert::button_view(state));
     }
     heading = heading
         .push(
@@ -199,7 +208,12 @@ pub fn view(state: &State) -> Element<'_, Message> {
             ]
             .spacing(6),
         )
-        .padding([6, 12])
+        .padding(iced::Padding {
+            top: 6.0 + theme::HEADER_TOP,
+            right: 12.0,
+            bottom: 6.0,
+            left: 12.0,
+        })
         .into()
     } else if state.viewport_width > 0.0 && state.viewport_width < 360.0 {
         let mut controls = row![
@@ -219,6 +233,9 @@ pub fn view(state: &State) -> Element<'_, Message> {
         ]
         .spacing(4)
         .align_y(Alignment::Center);
+        if matches!(state.screen, Screen::Home { .. }) {
+            controls = controls.push(super::convert::button_view(state));
+        }
         if !state.scan_warnings.is_empty() {
             controls = controls.push(
                 button(text("!").size(theme::font(state, 12.0)))
@@ -233,12 +250,12 @@ pub fn view(state: &State) -> Element<'_, Message> {
             ]
             .spacing(4),
         )
-        .padding([2, 12])
+        .padding(header_padding())
         .into()
     } else {
         container(heading)
-            .padding([2, 12])
-            .height(state.row_height())
+            .padding(header_padding())
+            .height(state.row_height() + theme::HEADER_TOP)
             .into()
     };
     let content = column![header].height(Fill);
