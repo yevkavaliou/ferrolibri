@@ -1,4 +1,4 @@
-//! UI-independent, bounded background execution. See docs/BACKGROUND_JOBS.md.
+//! UI-independent, bounded background execution.
 use crate::{
     Error, ErrorKind,
     book::Format,

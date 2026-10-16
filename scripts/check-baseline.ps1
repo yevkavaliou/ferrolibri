@@ -1,5 +1,5 @@
 # Run from any directory: pwsh -File scripts/check-baseline.ps1
-# GUI and whole-workspace formatting are separate checks; see docs/BASELINE.md.
+# GUI and whole-workspace formatting are separate checks.
 $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {

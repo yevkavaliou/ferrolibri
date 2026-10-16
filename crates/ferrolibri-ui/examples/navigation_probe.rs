@@ -51,7 +51,7 @@ const QUERIES: [&str; 9] = [
     "Математика",
 ];
 fn main() -> iced::Result {
-    std::fs::create_dir_all("docs/ui-item-8").unwrap();
+    std::fs::create_dir_all("target/probes/ui-item-8").unwrap();
     let temp = tempfile::tempdir().unwrap();
     let library = temp.path().join("Calibre Library");
     let mut snapshot = Vec::new();
@@ -189,7 +189,7 @@ fn main() -> iced::Result {
                         "search-restored",
                         "search-20k",
                     ];
-                    let path = format!("docs/ui-item-8/{}.png", names[p.stage]);
+                    let path = format!("target/probes/ui-item-8/{}.png", names[p.stage]);
                     image::save_buffer(
                         &path,
                         &s.rgba,

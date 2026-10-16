@@ -36,7 +36,7 @@ fn view(p: &Probe) -> Element<'_, Event> {
     app::view(&p.app).map(|m| Event::App(Box::new(m)))
 }
 fn main() -> iced::Result {
-    std::fs::create_dir_all("docs/ui-item-7").unwrap();
+    std::fs::create_dir_all("target/probes/ui-item-7").unwrap();
     let temp = tempfile::tempdir().unwrap();
     let services = Arc::new(
         RealServices::with_paths(temp.path().join("config.toml"), temp.path().join("ui.toml"))
@@ -82,7 +82,7 @@ fn main() -> iced::Result {
         Event::Capture=>iced::window::latest().then(|id|iced::window::screenshot(id.unwrap()).map(|s|Event::Shot(Box::new(s)))),
         Event::Shot(s)=>{
             let names=["list-1100","list-760-selected","warnings-760","empty-760","grid-placeholder-760"];
-            let path=format!("docs/ui-item-7/{}.png",names[p.stage]);
+            let path=format!("target/probes/ui-item-7/{}.png",names[p.stage]);
             image::save_buffer(&path,&s.rgba,s.size.width,s.size.height,image::ColorType::Rgba8).unwrap();println!("capture {path} {}x{}",s.size.width,s.size.height);Task::done(Event::Next)
         }
         Event::Next=>{

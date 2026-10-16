@@ -39,7 +39,7 @@ fn view(probe: &Probe) -> Element<'_, Event> {
     app::view(&probe.app).map(|m| Event::App(Box::new(m)))
 }
 fn main() -> iced::Result {
-    std::fs::create_dir_all("docs/ui-item-6").unwrap();
+    std::fs::create_dir_all("target/probes/ui-item-6").unwrap();
     let fixture = tempfile::tempdir().unwrap();
     let settings_path = fixture.path().join("ui.toml");
     let services = Arc::new(
@@ -68,7 +68,7 @@ fn main() -> iced::Result {
                 iced::window::screenshot(id.unwrap()).map(|shot| Event::Shot(Box::new(shot)))
             }),
             Event::Shot(shot) => {
-                let path = format!("docs/ui-item-6/{}.png", NAMES[probe.stage]);
+                let path = format!("target/probes/ui-item-6/{}.png", NAMES[probe.stage]);
                 image::save_buffer(
                     &path,
                     &shot.rgba,

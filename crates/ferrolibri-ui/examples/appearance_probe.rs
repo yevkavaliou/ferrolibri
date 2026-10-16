@@ -43,7 +43,7 @@ fn main() -> iced::Result {
         .unwrap(),
     );
     let svc = services.clone();
-    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/ui-appearance");
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/probes/ui-appearance");
     std::fs::create_dir_all(&out).unwrap();
     let names = [
         "details-single-760",

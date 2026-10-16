@@ -1,4 +1,4 @@
-//! UI counterpart of `docs/READINESS.md`: saved configuration → real scan job → selection →
+//! UI counterpart of the core readiness check: saved configuration → real scan job → selection →
 //! send through the real coordinator and executor to a fixture reader, with the library
 //! compared byte for byte afterwards. Only volume enumeration is injected; no physical reader.
 #[path = "../../ferrolibri-core/src/test_support.rs"]

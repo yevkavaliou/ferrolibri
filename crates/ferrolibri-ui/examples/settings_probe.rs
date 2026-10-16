@@ -44,7 +44,7 @@ fn main() -> iced::Result {
         .unwrap(),
     );
     let svc = services.clone();
-    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/ui-item-12");
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/probes/ui-item-12");
     std::fs::create_dir_all(&out).unwrap();
     let names = [
         "settings-default-760",

@@ -85,7 +85,7 @@ fn main() -> iced::Result {
             .with_cover_cache(cache.clone()),
     );
     let worker = services.clone();
-    std::fs::create_dir_all("docs/ui-item-9").unwrap();
+    std::fs::create_dir_all("target/probes/ui-item-9").unwrap();
     let run = iced::application(move || {
         (Probe { app: {let mut state=State::default();state.screen=Screen::Home{filter:Filter::All};state.scan_status=ScanStatus::Ready;state.catalog=Catalog::new(books.clone());state}, start: Instant::now(), offset: 0.0, stage: 0, max_handles: 0, max_workers: 0, heartbeat: Instant::now(), delays: vec![], screenshots: 0, measuring: false }, delay(Event::Drive, 20))
     }, move |p: &mut Probe, event| {
@@ -129,7 +129,7 @@ fn main() -> iced::Result {
             Event::Shot(s) => {
                 let label = if p.stage == 1 { "grid-1100" } else { "list-760" };
                 p.screenshots += 1;
-                Task::perform(async move { tokio::task::spawn_blocking(move || image::save_buffer(format!("docs/ui-item-9/{label}.png"), &s.rgba, s.size.width, s.size.height, image::ColorType::Rgba8).unwrap()).await.unwrap(); }, |_| Event::Saved)
+                Task::perform(async move { tokio::task::spawn_blocking(move || image::save_buffer(format!("target/probes/ui-item-9/{label}.png"), &s.rgba, s.size.width, s.size.height, image::ColorType::Rgba8).unwrap()).await.unwrap(); }, |_| Event::Saved)
             }
             Event::Saved => {
                 if p.stage == 1 { p.measuring = true; p.heartbeat = Instant::now(); delay(Event::Drive, 20) } else { iced::window::latest().then(|id| iced::window::close(id.unwrap())) }

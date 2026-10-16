@@ -27,8 +27,6 @@ cargo uninstall ferrolibri
 
 A native desktop client built with [iced](https://iced.rs) lives in `crates/ferrolibri-ui` and is the graphical client of FerroLibri (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
 
-![FerroLibri iced UI: cover grid and details pane](docs/ui-item-15/scale-100-grid.png)
-
 Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon and Vulkan development packages listed in [`.github/workflows/ui.yml`](.github/workflows/ui.yml)):
 
 ```
@@ -41,8 +39,6 @@ The executable is `ferrolibri-gui`; `ferrolibri` is the terminal UI. `cargo buil
 - **External tools:** none to browse, search or send an existing compatible file. Conversion needs Calibre's `ebook-convert` and/or [kepubify](https://pgaskin.net/kepubify/).
 - **Keyboard:** `/` search, arrows move, Shift extends, Ctrl+A selects all, `T` sends, `C` opens Convert, Ctrl+B / Ctrl+I toggle the panes, Esc closes or clears.
 - **Not supported:** MTP and network readers, a light theme, metadata editing, a right-click context menu. No physical reader has been tested with this UI.
-
-Architecture, module map, how to add a screen, tests and the full list of limitations: [docs/UI.md](docs/UI.md). Manual checklist and results: [docs/UI_CHECKLIST.md](docs/UI_CHECKLIST.md).
 
 ## Features
 
@@ -83,8 +79,6 @@ Transfers copy into a temporary file on the destination and publish without over
 
 Core operations return typed `Error`/`ErrorKind`; scans separate root errors from per-book warnings. Missing OPF uses directory metadata, while corrupt OPF is an error. `JobExecutor` runs scans, metadata, conversion and transfers on bounded worker threads, exposes job IDs, states and events, and supports cancellation. Copy progress reports bytes; converter progress reports stages. Shutdown cancels work and joins workers, but may wait for an uninterruptible OS call.
 
-API contracts: [formats](docs/BOOK_FORMATS.md), [configuration](docs/CONFIG_PATHS.md), [metadata](docs/METADATA.md), [read-only library](docs/LIBRARY_READ_ONLY.md), [conversion](docs/CONVERSION.md), [devices and manual selection](docs/DEVICE_DETECTION.md), [preparation](docs/READER_PREPARATION.md), [safe transfer](docs/SAFE_TRANSFER.md), [errors](docs/CORE_ERRORS.md), [jobs](docs/BACKGROUND_JOBS.md), [client integration](docs/CLIENT_INTEGRATION.md).
-
 ## Verification
 
 With Rust 1.93.1:
@@ -94,7 +88,7 @@ pwsh -File scripts/check-readiness.ps1
 pwsh -File scripts/check-ui.ps1
 ```
 
-`check-readiness.ps1` runs the core/TUI tests, strict Clippy and the native volume enumeration smoke; `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion, and `-Ui` also runs `check-ui.ps1`. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator, real-core send/cancel/conflict flows, and a release build of the whole default workspace) on Windows, Ubuntu 24.04 and macOS. See the [final readiness report](docs/READINESS.md) for actual results and unverified hardware/platform limitations.
+`check-readiness.ps1` runs the core/TUI tests, strict Clippy and the native volume enumeration smoke; `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion, and `-Ui` also runs `check-ui.ps1`. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator, real-core send/cancel/conflict flows, and a release build of the whole default workspace) on Windows, Ubuntu 24.04 and macOS. No physical reader has been tested with the UI.
 
 ## Build from source
 

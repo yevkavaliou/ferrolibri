@@ -1,4 +1,4 @@
-"""Synthetic Calibre-like fixture for docs/UI_CHECKLIST.md (needs Pillow).
+"""Synthetic Calibre-like fixture for manual UI checks (needs Pillow).
 
 Usage: python scripts/make-ui-fixture.py <folder>
 Writes <folder>/config.toml and <folder>/Calibre Library with 240 books; run the UI with

@@ -3,7 +3,7 @@
 //! applied (iced resizes the window by that factor), so the layout area stays 760×520 logical,
 //! as it would be at 150% and 200% OS scaling.
 //! Run: cargo run -p ferrolibri-ui --example scaling_probe --locked
-//! Writes docs/ui-item-15/scale-<percent>-<grid|list>.png
+//! Writes target/probes/ui-item-15/scale-<percent>-<grid|list>.png
 use ferrolibri_core::scanner::scan_library;
 use ferrolibri_ui::{
     app::{self, Filter, Message, ScanStatus, Screen, State},
@@ -50,7 +50,7 @@ fn cover(seed: u8) -> image::RgbImage {
     })
 }
 fn main() -> iced::Result {
-    std::fs::create_dir_all("docs/ui-item-15").unwrap();
+    std::fs::create_dir_all("target/probes/ui-item-15").unwrap();
     let fixture = tempfile::tempdir().unwrap();
     let library = fixture.path().join("Library");
     std::fs::create_dir_all(&library).unwrap();
@@ -129,7 +129,7 @@ fn main() -> iced::Result {
                     "list"
                 };
                 let path = format!(
-                    "docs/ui-item-15/scale-{}-{kind}.png",
+                    "target/probes/ui-item-15/scale-{}-{kind}.png",
                     (p.scale * 100.0) as u32
                 );
                 image::save_buffer(

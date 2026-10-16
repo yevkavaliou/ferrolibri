@@ -68,7 +68,8 @@ fn view(p: &Probe) -> Element<'_, Event> {
     app::view(&p.app).map(|m| Event::App(Box::new(m)))
 }
 fn main() -> iced::Result {
-    let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/ui-item-10");
+    let out =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/probes/ui-item-10");
     std::fs::create_dir_all(&out).unwrap();
     let fixture = tempfile::tempdir().unwrap();
     let kobo = fixture.path().join("Kobo");

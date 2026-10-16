@@ -1,4 +1,4 @@
-//! Disposable item №2 lab. See docs/UI_SPIKE.md; not part of the shipped UI.
+//! Disposable item №2 lab. Not part of the shipped UI.
 use std::path::PathBuf;
 use std::time::Instant;
 

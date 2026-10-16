@@ -1,4 +1,4 @@
-//! Dark tokens from docs/design/mockup.html. Window surfaces remain opaque (D9).
+//! Dark tokens. Window surfaces remain opaque.
 use iced::{
     Border, Color, Theme,
     widget::{button, checkbox, container, scrollable, text_input},
