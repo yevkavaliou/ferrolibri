@@ -9,9 +9,9 @@ try {
     $env:TMP = Join-Path $root 'target'
     $env:TEMP = $env:TMP
     [IO.Directory]::CreateDirectory($env:TMP) | Out-Null
-    & cargo test --locked -p rulibre-core -p rulibre
+    & cargo test --locked -p ferrolibri-core -p ferrolibri
     if ($LASTEXITCODE -ne 0) { throw 'core/TUI tests failed' }
-    & cargo check --locked -p rulibre-core -p rulibre
+    & cargo check --locked -p ferrolibri-core -p ferrolibri
     if ($LASTEXITCODE -ne 0) { throw 'core/TUI check failed' }
     & cargo fmt --all -- --check
     if ($LASTEXITCODE -ne 0) { throw 'workspace formatting failed' }

@@ -1,4 +1,4 @@
-// RULIBRE PATCH: keep path-dependency builds free of upstream deprecation noise.
+// FERROLIBRI PATCH: keep path-dependency builds free of upstream deprecation noise.
 #![allow(deprecated)]
 //! A windowing shell for Iced, on top of [`winit`].
 //!

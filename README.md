@@ -1,41 +1,41 @@
-# Rulibre
+# FerroLibri
 
 I got tired of Calibre's old, complex interface and its heavy storage footprint. All I really needed was a way to browse my library and transfer books to my e-reader, so I built a lightweight, drop-in replacement that works with your existing Calibre library structure. I also added things I found lacking or too complicated to use in Calibre, like instant book search.
 
-![Rulibre screenshot](assets/screenshot.png)
+![FerroLibri screenshot](assets/screenshot.png)
 
 ## Install
 
-The easiest way to get Rulibre is from [crates.io](https://crates.io/crates/rulibre):
+FerroLibri is not published on crates.io yet; build it from source (see [Build from source](#build-from-source)):
 
 ```
-cargo install rulibre
-rulibre
+cargo install --path crates/ferrolibri
+ferrolibri
 ```
 
-This installs the **TUI** (terminal) version. Conversion requires external tools; browsing and sending an existing compatible file do not. The graphical (iced) version is source-only (see [Build from source](#build-from-source)). These crates.io instructions refer to the upstream release; build this checkout to use the core changes documented below.
+This installs the **TUI** (terminal) version. Conversion requires external tools; browsing and sending an existing compatible file do not. The graphical (iced) version is also built from source.
 
 On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
 
 ### Uninstall
 
 ```
-cargo uninstall rulibre
+cargo uninstall ferrolibri
 ```
 
 ## Desktop UI (iced)
 
-A native desktop client built with [iced](https://iced.rs) lives in `crates/rulibre-ui` and is the graphical client of Rulibre (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
+A native desktop client built with [iced](https://iced.rs) lives in `crates/ferrolibri-ui` and is the graphical client of FerroLibri (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
 
-![Rulibre iced UI: cover grid and details pane](docs/ui-item-15/scale-100-grid.png)
+![FerroLibri iced UI: cover grid and details pane](docs/ui-item-15/scale-100-grid.png)
 
 Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon and Vulkan development packages listed in [`.github/workflows/ui.yml`](.github/workflows/ui.yml)):
 
 ```
-cargo run -p rulibre-ui --release
+cargo run -p ferrolibri-ui --release
 ```
 
-The executable is `rulibre-gui`; `rulibre` is the terminal UI. `cargo build --release` builds the core, the TUI and the iced UI.
+The executable is `ferrolibri-gui`; `ferrolibri` is the terminal UI. `cargo build --release` builds the core, the TUI and the iced UI.
 
 - **Platforms:** built, linted and tested in CI on Windows, Ubuntu 24.04 and macOS. It has only been run by hand on Windows 11. Window blur is Windows-only; other systems get an opaque window.
 - **External tools:** none to browse, search or send an existing compatible file. Conversion needs Calibre's `ebook-convert` and/or [kepubify](https://pgaskin.net/kepubify/).
@@ -71,7 +71,7 @@ Press `c` on a selected book to convert it to another format. Conversion options
 
 Only formats you don't already have are offered. If neither tool is installed, the convert dialog will let you know.
 
-The Calibre library is read-only: Rulibre never imports conversions into it or changes `metadata.db`, OPF, covers or source books. Conversion results live in a separate temporary workspace owned by the application; retain/export them before exiting if needed. Explicit core output directories must be outside the library. Existing output files produce a conflict error.
+The Calibre library is read-only: FerroLibri never imports conversions into it or changes `metadata.db`, OPF, covers or source books. Conversion results live in a separate temporary workspace owned by the application; retain/export them before exiting if needed. Explicit core output directories must be outside the library. Existing output files produce a conflict error.
 
 ## Readers and core API
 
@@ -98,32 +98,32 @@ pwsh -File scripts/check-ui.ps1
 
 ## Build from source
 
-Rulibre ships these frontends from a single workspace:
+FerroLibri ships these frontends from a single workspace:
 
-- **TUI** — the ratatui terminal interface, published on crates.io
-- **iced UI** — the native desktop client described [above](#desktop-ui-iced) (`cargo run -p rulibre-ui`, binary `rulibre-gui`)
+- **TUI** — the ratatui terminal interface
+- **iced UI** — the native desktop client described [above](#desktop-ui-iced) (`cargo run -p ferrolibri-ui`, binary `ferrolibri-gui`)
 
 `cargo build --release` builds both and the core library.
 
 ### TUI
 
 ```
-cargo install --path crates/rulibre
+cargo install --path crates/ferrolibri
 ```
 
 Or run directly from a checkout:
 
 ```
-cargo run -p rulibre
+cargo run -p ferrolibri
 ```
 
 ### Desktop UI
 
 ```
-cargo run -p rulibre-ui --release
+cargo run -p ferrolibri-ui --release
 ```
 
-or `cargo install --path crates/rulibre-ui` to install `rulibre-gui`. It is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)).
+or `cargo install --path crates/ferrolibri-ui` to install `ferrolibri-gui`. It is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)).
 
 ## Extra tools
 
@@ -132,3 +132,9 @@ A diagnostic binary is included for checking unrecognized metadata tags:
 ```
 cargo run --bin scan_metadata -- /path/to/calibre/library
 ```
+
+## Credits and license
+
+FerroLibri is based on the core of [Rulibre](https://github.com/Glydric/Rulibre) by Leonardo Migliorelli (MIT). It is an independent project with its own name, iced UI and core changes; it is not affiliated with or endorsed by the original author.
+
+Released under the [MIT License](LICENSE), which keeps the original copyright notice. The vendored iced crates in `vendor/` keep their own MIT license ([`vendor/LICENSE-iced`](vendor/LICENSE-iced)). Other dependencies are used unmodified under their own licenses (mostly MIT/Apache-2.0; a few crates are MPL-2.0).

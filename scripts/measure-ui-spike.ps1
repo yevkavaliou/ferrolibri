@@ -11,7 +11,7 @@ $previousBackend = $env:ICED_BACKEND
 $previousWgpuBackend = $env:WGPU_BACKEND
 Push-Location $root
 try {
-    & cargo build -p rulibre-ui --example spike_capabilities --locked
+    & cargo build -p ferrolibri-ui --example spike_capabilities --locked
     if ($LASTEXITCODE -ne 0) { throw 'Spike build failed' }
     New-Item -ItemType Directory -Force $output | Out-Null
     $env:RUST_LOG = 'iced_winit=info,iced_wgpu=info,fontdb=warn'

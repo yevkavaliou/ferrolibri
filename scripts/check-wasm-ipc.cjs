@@ -21,7 +21,7 @@ global.window = { __TAURI__: { core: { invoke: async (cmd, args) => {
     default: throw `Unexpected invocation ${cmd}`;
   }
 } } } };
-const wasm = require(path.resolve(__dirname, '../target/wasm-ipc/rulibre_gui.js'));
+const wasm = require(path.resolve(__dirname, '../target/wasm-ipc/ferrolibri_gui.js'));
 async function rejects(promise, expected) {
   try { await promise; assert.fail('expected rejection'); }
   catch (error) { assert.match(String(error), expected); }

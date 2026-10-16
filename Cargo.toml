@@ -1,20 +1,20 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/rulibre",
-    "crates/rulibre-core",
-    "crates/rulibre-ui",
+    "crates/ferrolibri",
+    "crates/ferrolibri-core",
+    "crates/ferrolibri-ui",
 ]
-default-members = ["crates/rulibre-core", "crates/rulibre", "crates/rulibre-ui"]
+default-members = ["crates/ferrolibri-core", "crates/ferrolibri", "crates/ferrolibri-ui"]
 exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.2"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/Glydric/Rulibre"
-homepage = "https://github.com/Glydric/Rulibre"
-authors = ["Leonardo Migliorelli"]
+repository = "https://github.com/yevkavaliou/ferrolibri"
+homepage = "https://github.com/yevkavaliou/ferrolibri"
+authors = ["Yauheni Kavaliou", "Leonardo Migliorelli"]
 description = "A lightweight replacement for Calibre — browse your library and transfer books to your e-reader."
 keywords = ["calibre", "ebook", "kindle", "kobo", "ereader"]
 categories = ["command-line-utilities"]

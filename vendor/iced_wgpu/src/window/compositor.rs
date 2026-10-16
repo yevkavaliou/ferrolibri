@@ -60,7 +60,7 @@ impl Compositor {
                 } else {
                     wgpu::InstanceFlags::empty()
                 },
-                // RULIBRE PATCH: honour WGPU_DX12_PRESENTATION_SYSTEM so Windows
+                // FERROLIBRI PATCH: honour WGPU_DX12_PRESENTATION_SYSTEM so Windows
                 // can present through DirectComposition (transparent windows).
                 backend_options: wgpu::BackendOptions::from_env_or_default(),
                 ..Default::default()
@@ -127,7 +127,7 @@ impl Compositor {
 
                 log::info!("Available alpha modes: {alpha_modes:#?}");
 
-                // RULIBRE PATCH: DirectComposition swap chains accept only
+                // FERROLIBRI PATCH: DirectComposition swap chains accept only
                 // premultiplied alpha (straight alpha is an invalid surface).
                 let prefer_premultiplied = std::env::var_os(
                     "WGPU_DX12_PRESENTATION_SYSTEM",

@@ -11,10 +11,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-& cargo build -p rulibre-ui --example blur_probe --locked
+& cargo build -p ferrolibri-ui --example blur_probe --locked
 if ($LASTEXITCODE -ne 0) { throw 'blur_probe build failed' }
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-$flag = Join-Path ([IO.Path]::GetTempPath()) "rulibre-blur-inactive.flag"
+$flag = Join-Path ([IO.Path]::GetTempPath()) "ferrolibri-blur-inactive.flag"
 Remove-Item $flag -ErrorAction SilentlyContinue
 $backdrop = Start-Job -ArgumentList $flag -ScriptBlock {
     param($flag)

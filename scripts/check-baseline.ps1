@@ -7,7 +7,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'cargo test --locked failed' }
     & cargo check --locked
     if ($LASTEXITCODE -ne 0) { throw 'cargo check --locked failed' }
-    & cargo fmt -p rulibre-core -p rulibre -- --check
+    & cargo fmt -p ferrolibri-core -p ferrolibri -- --check
     if ($LASTEXITCODE -ne 0) { throw 'core/TUI formatting failed' }
 } finally {
     Pop-Location

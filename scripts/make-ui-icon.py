@@ -1,6 +1,6 @@
-"""Generate crates/rulibre-ui/assets/app-icon.ico (and a 256 px PNG) from code.
+"""Generate crates/ferrolibri-ui/assets/app-icon.ico (and a 256 px PNG) from code.
 
-Palette comes from crates/rulibre-ui/src/theme.rs (background, accent). Run:
+Palette comes from crates/ferrolibri-ui/src/theme.rs (background, accent). Run:
     python scripts/make-ui-icon.py
 Requires Pillow. The output is committed, so the build does not need Python.
 """
@@ -29,7 +29,7 @@ def draw() -> Image.Image:
 
 
 def main() -> None:
-    out = Path(__file__).resolve().parent.parent / "crates" / "rulibre-ui" / "assets"
+    out = Path(__file__).resolve().parent.parent / "crates" / "ferrolibri-ui" / "assets"
     out.mkdir(parents=True, exist_ok=True)
     base = draw()
     sizes = [16, 24, 32, 48, 64, 128, 256]

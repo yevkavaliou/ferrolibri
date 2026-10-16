@@ -1,0 +1,93 @@
+// Release builds on Windows are a GUI-subsystem program: no console window.
+// Debug builds keep the console so `RUST_LOG` output stays visible.
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+use ferrolibri_ui::{
+    app,
+    services::{RealServices, Services},
+};
+mod screens;
+
+fn main() -> iced::Result {
+    ferrolibri_ui::blur::prepare_environment();
+    // Warnings the UI does not show (cover decoding, device polling, metadata,
+    // scan) are logged; RUST_LOG overrides the default level.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    let services = match RealServices::new() {
+        Ok(services) => std::sync::Arc::new(services),
+        Err(error) => {
+            // Without a console (release build on Windows) a panic would vanish.
+            log::error!("could not initialize services: {error}");
+            rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Error)
+                .set_title("FerroLibri")
+                .set_description(format!("FerroLibri could not start: {error}"))
+                .show();
+            std::process::exit(1);
+        }
+    };
+    let update_services = services.clone();
+    let boot_services = services.clone();
+    let subscription_services = services.clone();
+
+    let result = iced::application(
+        move || {
+            let mut state = app::State::default();
+            let settings = app::update(
+                &mut state,
+                app::Message::LoadSettings,
+                boot_services.as_ref(),
+            );
+            let library = app::update(
+                &mut state,
+                app::Message::LoadLibrary,
+                boot_services.as_ref(),
+            );
+            let backends = app::update(
+                &mut state,
+                app::Message::RefreshBackends,
+                boot_services.as_ref(),
+            );
+            (state, iced::Task::batch([settings, library, backends]))
+        },
+        move |state: &mut app::State, message| {
+            app::update(state, message, update_services.as_ref())
+        },
+        app::view,
+    )
+    .title("FerroLibri")
+    .window(iced::window::Settings {
+        size: iced::Size::new(1100.0, 700.0),
+        min_size: Some(iced::Size::new(760.0, 520.0)),
+        // With a transparent window the toolbar doubles as the title bar.
+        decorations: !ferrolibri_ui::blur::ready(),
+        transparent: ferrolibri_ui::blur::ready(),
+        #[cfg(target_os = "windows")]
+        platform_specific: iced::window::settings::PlatformSpecific {
+            undecorated_shadow: ferrolibri_ui::blur::ready(),
+            ..Default::default()
+        },
+        exit_on_close_request: false,
+        ..Default::default()
+    })
+    .theme(ferrolibri_ui::theme::dark())
+    .style(app::style)
+    .subscription(move |state: &app::State| {
+        iced::Subscription::batch([
+            app::subscription(state),
+            if state.closing {
+                iced::Subscription::none()
+            } else {
+                subscription_services
+                    .device_subscription()
+                    .map(app::Message::Devices)
+            },
+        ])
+    })
+    .run();
+    services.shutdown();
+    result
+}

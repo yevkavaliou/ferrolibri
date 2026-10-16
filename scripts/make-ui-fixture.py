@@ -2,7 +2,7 @@
 
 Usage: python scripts/make-ui-fixture.py <folder>
 Writes <folder>/config.toml and <folder>/Calibre Library with 240 books; run the UI with
-RULIBRE_UI_DATA_DIR=<folder> so nothing touches the real profile.
+FERROLIBRI_UI_DATA_DIR=<folder> so nothing touches the real profile.
 """
 import os, sys, random
 from PIL import Image, ImageDraw

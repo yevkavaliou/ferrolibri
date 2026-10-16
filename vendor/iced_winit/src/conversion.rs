@@ -102,7 +102,7 @@ pub fn window_attributes(
         attributes = attributes
             .with_skip_taskbar(settings.platform_specific.skip_taskbar);
 
-        // RULIBRE PATCH: with a DirectComposition swap chain the window must
+        // FERROLIBRI PATCH: with a DirectComposition swap chain the window must
         // not have a redirection bitmap, or an opaque white surface sits
         // underneath and hides all transparency.
         if settings.transparent

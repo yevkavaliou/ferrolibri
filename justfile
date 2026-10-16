@@ -1,11 +1,11 @@
 tui-run:
-    cargo run -p rulibre
+    cargo run -p ferrolibri
 
 tui-build:
-    cargo build -p rulibre
+    cargo build -p ferrolibri
 
 gui-run:
-    cargo run -p rulibre-ui --release
+    cargo run -p ferrolibri-ui --release
 
 gui-build:
-    cargo build -p rulibre-ui --release
+    cargo build -p ferrolibri-ui --release

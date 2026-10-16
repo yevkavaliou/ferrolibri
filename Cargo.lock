@@ -1428,6 +1428,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferrolibri"
+version = "0.1.2"
+dependencies = [
+ "crossterm",
+ "ferrolibri-core",
+ "ratatui",
+]
+
+[[package]]
+name = "ferrolibri-core"
+version = "0.1.2"
+dependencies = [
+ "dirs",
+ "kuchikiki",
+ "libc",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "toml",
+ "windows 0.62.2",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ferrolibri-ui"
+version = "0.1.2"
+dependencies = [
+ "dirs",
+ "env_logger",
+ "ferrolibri-core",
+ "iced",
+ "iced_runtime",
+ "iced_test",
+ "image",
+ "libloading",
+ "log",
+ "rfd",
+ "serde",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "toml",
+ "window-vibrancy",
+ "winresource",
+]
+
+[[package]]
 name = "filedescriptor"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4406,53 +4453,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "rulibre"
-version = "0.1.2"
-dependencies = [
- "crossterm",
- "ratatui",
- "rulibre-core",
-]
-
-[[package]]
-name = "rulibre-core"
-version = "0.1.2"
-dependencies = [
- "dirs",
- "kuchikiki",
- "libc",
- "roxmltree 0.21.1",
- "serde",
- "serde_json",
- "toml",
- "windows 0.62.2",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "rulibre-ui"
-version = "0.1.2"
-dependencies = [
- "dirs",
- "env_logger",
- "iced",
- "iced_runtime",
- "iced_test",
- "image",
- "libloading",
- "log",
- "rfd",
- "rulibre-core",
- "serde",
- "sha2",
- "tempfile",
- "tokio",
- "toml",
- "window-vibrancy",
- "winresource",
 ]
 
 [[package]]
