@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod icons;
 pub mod keymap;
 pub mod palette;
+pub mod plugins;
 pub mod response_guard;
 pub mod selection;
 pub mod services;

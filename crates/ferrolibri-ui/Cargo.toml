@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 ferrolibri-core = { path = "../ferrolibri-core" }
+ferrolibri-plugins = { path = "../ferrolibri-plugins" }
 iced = { version = "0.14", features = ["image", "svg", "tokio", "advanced", "lazy"] }
 env_logger = "0.11"
 serde.workspace = true

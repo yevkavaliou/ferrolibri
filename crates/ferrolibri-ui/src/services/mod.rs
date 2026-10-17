@@ -2,6 +2,7 @@
 pub mod covers;
 pub mod devices;
 pub mod jobs;
+pub mod plugins;
 use crate::settings::UiSettings;
 use ferrolibri_core::{
     book::{BookFile, Format},
@@ -125,6 +126,48 @@ pub trait Services: Send + Sync {
             })
         })
     }
+    /// Every installed plugin with its settings, as the Settings screen shows them.
+    fn list_plugins(&self) -> ServiceFuture<Vec<plugins::PluginRow>> {
+        Box::pin(async { Err("Plugins are unavailable".into()) })
+    }
+    /// Looks at a folder or an address and says what is there. Nothing is installed.
+    fn check_plugin_source(
+        &self,
+        _request: plugins::SourceRequest,
+        _cancel: CancellationToken,
+    ) -> plugins::PluginFuture<plugins::Checked> {
+        Box::pin(async { Err(plugins::Problem::unavailable()) })
+    }
+    /// Downloads and checks one release picked from a GitHub list.
+    fn inspect_plugin_release(
+        &self,
+        _release: plugins::ReleaseView,
+        _cancel: CancellationToken,
+    ) -> plugins::PluginFuture<plugins::Candidate> {
+        Box::pin(async { Err(plugins::Problem::unavailable()) })
+    }
+    /// Installs what the user confirmed.
+    fn install_plugin(
+        &self,
+        _candidate: plugins::Candidate,
+        _options: plugins::InstallOptions,
+    ) -> plugins::PluginFuture<plugins::Installed> {
+        Box::pin(async { Err(plugins::Problem::unavailable()) })
+    }
+    fn set_plugin_enabled(&self, _id: String, _enabled: bool) -> ServiceFuture<()> {
+        Box::pin(async { Err("Plugins are unavailable".into()) })
+    }
+    fn remove_plugin(&self, _id: String) -> ServiceFuture<()> {
+        Box::pin(async { Err("Plugins are unavailable".into()) })
+    }
+    /// Replaces the saved values of a plugin with the whole form.
+    fn save_plugin_settings(
+        &self,
+        _id: String,
+        _values: Vec<(String, plugins::FieldValue)>,
+    ) -> ServiceFuture<()> {
+        Box::pin(async { Err("Plugins are unavailable".into()) })
+    }
     fn scan(&self, library: PathBuf) -> JobId {
         self.enqueue("Scan library".into(), JobRequest::Scan { library })
     }
@@ -179,6 +222,7 @@ pub struct RealServices {
     settings_write: Arc<tokio::sync::Mutex<()>>,
     cover_cache_path: PathBuf,
     devices: Arc<devices::DeviceFeed>,
+    plugins: plugins::PluginBackend,
 }
 impl RealServices {
     pub fn new() -> Result<Self, String> {
@@ -194,6 +238,13 @@ impl RealServices {
             ferrolibri_core::config::Config::path().map_err(|e| e.to_string())?,
             UiSettings::path().map_err(|e| e.to_string())?,
         )
+        .map(|services| {
+            // Plugins live in the user's data directory (D11), not next to `ui.toml`.
+            match ferrolibri_plugins::PluginStore::default_location() {
+                Ok(store) => services.with_plugin_store(store),
+                Err(_) => services,
+            }
+        })
     }
     /// Explicit paths let fixture runs avoid the user's saved configuration.
     pub fn with_paths(config_path: PathBuf, settings_path: PathBuf) -> Result<Self, String> {
@@ -209,6 +260,13 @@ impl RealServices {
         settings_path: PathBuf,
         executor: ferrolibri_core::jobs::JobExecutor,
     ) -> Result<Self, String> {
+        // Without a better place, plugins sit next to the preferences, so a run with explicit
+        // paths (a fixture, a test) never touches the user's own plugins.
+        let home = settings_path
+            .parent()
+            .map_or_else(PathBuf::new, Path::to_path_buf);
+        let plugin_store =
+            ferrolibri_plugins::PluginStore::new(home.join("plugins"), home.join("plugins.toml"));
         Ok(Self {
             jobs: Mutex::new(Coordinator::with_core_executor(executor)),
             settings_path,
@@ -216,7 +274,13 @@ impl RealServices {
             settings_write: Arc::new(tokio::sync::Mutex::new(())),
             cover_cache_path: covers::cache_dir(),
             devices: Arc::new(devices::DeviceFeed::default()),
+            plugins: plugins::PluginBackend::new(plugin_store),
         })
+    }
+    /// Keep plugins and their switches somewhere other than beside the preferences.
+    pub fn with_plugin_store(mut self, store: ferrolibri_plugins::PluginStore) -> Self {
+        self.plugins = plugins::PluginBackend::new(store);
+        self
     }
     /// Isolate benchmark caches without changing the user's preferences.
     pub fn with_cover_cache(mut self, path: PathBuf) -> Self {
@@ -325,6 +389,15 @@ fn blocking<T: Send + 'static>(
         tokio::task::spawn_blocking(f)
             .await
             .map_err(|e| e.to_string())?
+    })
+}
+fn blocking_plugin<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, plugins::Problem> + Send + 'static,
+) -> plugins::PluginFuture<T> {
+    Box::pin(async move {
+        tokio::task::spawn_blocking(f)
+            .await
+            .map_err(|e| plugins::Problem::failed("Could not check the plugin", e.to_string()))?
     })
 }
 impl Services for RealServices {
@@ -436,6 +509,50 @@ impl Services for RealServices {
         // Construct on the event-loop thread (required by macOS), await in iced.
         let dialog = rfd::AsyncFileDialog::new().pick_folder();
         Box::pin(async move { Ok(dialog.await.map(|file| file.path().to_owned())) })
+    }
+    fn list_plugins(&self) -> ServiceFuture<Vec<plugins::PluginRow>> {
+        let backend = self.plugins.clone();
+        blocking(move || backend.list())
+    }
+    fn check_plugin_source(
+        &self,
+        request: plugins::SourceRequest,
+        cancel: CancellationToken,
+    ) -> plugins::PluginFuture<plugins::Checked> {
+        let backend = self.plugins.clone();
+        blocking_plugin(move || backend.check(&request, &cancel))
+    }
+    fn inspect_plugin_release(
+        &self,
+        release: plugins::ReleaseView,
+        cancel: CancellationToken,
+    ) -> plugins::PluginFuture<plugins::Candidate> {
+        let backend = self.plugins.clone();
+        blocking_plugin(move || backend.inspect_release(&release, &cancel))
+    }
+    fn install_plugin(
+        &self,
+        candidate: plugins::Candidate,
+        options: plugins::InstallOptions,
+    ) -> plugins::PluginFuture<plugins::Installed> {
+        let backend = self.plugins.clone();
+        blocking_plugin(move || backend.install(&candidate, options))
+    }
+    fn set_plugin_enabled(&self, id: String, enabled: bool) -> ServiceFuture<()> {
+        let backend = self.plugins.clone();
+        blocking(move || backend.set_enabled(&id, enabled))
+    }
+    fn remove_plugin(&self, id: String) -> ServiceFuture<()> {
+        let backend = self.plugins.clone();
+        blocking(move || backend.remove(&id))
+    }
+    fn save_plugin_settings(
+        &self,
+        id: String,
+        values: Vec<(String, plugins::FieldValue)>,
+    ) -> ServiceFuture<()> {
+        let backend = self.plugins.clone();
+        blocking(move || backend.save_settings(&id, &values))
     }
 }
 
@@ -671,6 +788,10 @@ mod tests {
             settings_write: Arc::new(tokio::sync::Mutex::new(())),
             cover_cache_path: dir.path().join("covers"),
             devices: Arc::new(devices::DeviceFeed::default()),
+            plugins: plugins::PluginBackend::new(ferrolibri_plugins::PluginStore::new(
+                dir.path().join("plugins"),
+                dir.path().join("plugins.toml"),
+            )),
         };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()

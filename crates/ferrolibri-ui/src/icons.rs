@@ -19,6 +19,9 @@ pub const CHEVRON_DOWN: &[u8] = icon!(r#"<path d="m6 9 6 6 6-6"/>"#);
 pub const FOLDER: &[u8] = icon!(
     r#"<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>"#
 );
+pub const GLOBE: &[u8] = icon!(
+    r#"<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>"#
+);
 pub const CHECK: &[u8] = icon!(r#"<path d="m5 12 4 4L19 6"/>"#);
 pub const SIDEBAR: &[u8] =
     icon!(r#"<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>"#);

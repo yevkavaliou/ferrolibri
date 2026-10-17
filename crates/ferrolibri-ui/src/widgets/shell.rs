@@ -580,6 +580,26 @@ pub fn view<'a>(state: &'a State, content: Element<'a, Message>) -> Element<'a, 
     } else {
         base
     };
+    let base: Element<'_, Message> = if state.plugins.install.is_some() {
+        iced::widget::stack![
+            base,
+            iced::widget::mouse_area(container(Space::new()).width(Fill).height(Fill).style(
+                |_| container::Style {
+                    background: Some(iced::Color::BLACK.scale_alpha(0.45).into()),
+                    ..Default::default()
+                }
+            ))
+            .on_press(Message::Ignore),
+            container(super::plugins::install_dialog(state))
+                .width(Fill)
+                .height(Fill)
+                .center_x(Fill)
+                .center_y(Fill)
+        ]
+        .into()
+    } else {
+        base
+    };
     let base: Element<'_, Message> = if !state.toasts.is_empty() || !state.notices.is_empty() {
         iced::widget::stack![
             base,

@@ -145,7 +145,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
         setting_row(state, "Library folder", library, library_button.into()),
         setting_row(state, "Export folder", export, export_button.into()),
     ]
-    .spacing(24);
+    .spacing(24)
+    .push(super::plugins::group(state));
     column![
         container(text("Settings").size(theme::font(state, 16.0)))
             .padding(super::book_list::header_padding())

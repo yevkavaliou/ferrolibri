@@ -134,6 +134,7 @@ pub struct State {
     pub scroll_visible: bool,
     scroll_last: Option<std::time::Instant>,
     pub blur: crate::blur::BlurState,
+    pub plugins: crate::plugins::PluginsState,
 }
 impl State {
     pub fn row_height(&self) -> f32 {
@@ -398,6 +399,7 @@ pub enum Message {
     PickFolder,
     FolderPicked(Result<Option<PathBuf>, String>),
     Close(iced::window::Id),
+    Plugins(crate::plugins::Msg),
 }
 
 pub fn update(state: &mut State, message: Message, services: &dyn Services) -> Task<Message> {
@@ -1228,7 +1230,9 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             return update(state, Message::SaveSettings(settings), services);
         }
         Message::ToggleSidebar | Message::ToggleDetails => {}
+        Message::Plugins(msg) => return crate::plugins::update(state, msg, services),
         Message::Navigate(screen) => {
+            let to_settings = screen == Screen::Settings;
             if screen == Screen::Search && matches!(state.screen, Screen::Home { .. }) {
                 state.search_return = Some(state.screen.clone());
             }
@@ -1240,6 +1244,9 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             state.show_warnings = false;
             refresh_filter(state);
             let scroll = reset_list_scroll();
+            if to_settings {
+                return Task::batch([scroll, crate::plugins::reload(state, services)]);
+            }
             if state.screen == Screen::Search {
                 return Task::batch([
                     scroll,
@@ -1627,7 +1634,7 @@ fn key_context(state: &State) -> keymap::Context {
     };
     keymap::Context {
         pane,
-        overlay: state.export_prompt || state.reader_picker.open,
+        overlay: state.export_prompt || state.reader_picker.open || state.plugins.install.is_some(),
         warnings: state.show_warnings,
     }
 }
@@ -1761,6 +1768,13 @@ fn open_details_focused(state: &mut State, services: &dyn Services) -> Task<Mess
 /// Esc closes the innermost layer: prompt, popover, menu, warning list; then
 /// leaves Search; then clears the selection.
 fn escape(state: &mut State, services: &dyn Services) -> Task<Message> {
+    if state.plugins.install.is_some() {
+        return update(
+            state,
+            Message::Plugins(crate::plugins::Msg::CloseInstall),
+            services,
+        );
+    }
     if state.export_prompt {
         return update(state, Message::CancelConvert, services);
     }
