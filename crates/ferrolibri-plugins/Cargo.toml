@@ -8,6 +8,11 @@ description = "Plugin contract for FerroLibri — manifest, search result types 
 [lib]
 path = "src/lib.rs"
 
+[features]
+# The scriptable local HTTP server and the OPDS catalog stand-in (`ferrolibri_plugins::testing`),
+# for the tests of this crate's dependants. The crate's own tests always have it.
+test-support = []
+
 [dependencies]
 ferrolibri-core = { path = "../ferrolibri-core" }
 serde = { workspace = true }
@@ -15,4 +20,10 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 semver = "1.0.27"
 url = "2"
+# Only to recognise TLS failures: `ureq` hands them over as a bare `rustls::Error` in an `io::Error`.
+rustls = { version = "0.23", default-features = false, features = ["std"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 
+[dev-dependencies]
+# Turns `test-support` on for this crate's integration tests.
+ferrolibri-plugins = { path = ".", features = ["test-support"] }

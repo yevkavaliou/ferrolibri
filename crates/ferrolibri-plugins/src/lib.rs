@@ -1,20 +1,28 @@
 //! The FerroLibri plugin contract: manifest, search result types, validation.
 //!
-//! This crate contains no runtime and no network code. It fixes what a plugin may declare
-//! (`plugin.toml`) and what it may return (JSON), and rejects everything else. Everything that
-//! comes from a plugin is untrusted. The reference document is `docs/PLUGIN_API.md`.
+//! It fixes what a plugin may declare (`plugin.toml`) and what it may return (JSON), and rejects
+//! everything else. Everything that comes from a plugin is untrusted. The reference document is
+//! `docs/PLUGIN_API.md`. The crate also holds the HTTP layer through which all network access of
+//! the app and of plugins goes ([`http`]); it contains no plugin runtime.
 
 mod domain;
 mod download;
 mod host_error;
+pub mod http;
 pub mod limits;
 mod manifest;
 mod search;
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing;
 mod text;
 
 pub use domain::DomainRule;
 pub use download::{DownloadSpec, parse_download_spec};
 pub use host_error::HostErrorKind;
+pub use http::{
+    Access, AllowList, AllowListError, FetchResponse, HostError, Http, HttpConfig, HttpSession,
+    Identity, NameResolver, ResponseHead, ResponseStream, SystemResolver, is_forbidden_ip,
+};
 pub use manifest::{
     Compatibility, Limits, Manifest, ManifestError, Network, Reason, Setting, SettingKind,
     SettingValue,
