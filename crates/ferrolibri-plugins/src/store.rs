@@ -22,6 +22,7 @@ use ferrolibri_core::{Error, ErrorKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub(crate) use install::store_compatibility;
 pub use install::{Downgrade, Inspection, InstallChange, Permissions};
 
 use crate::{
@@ -40,6 +41,10 @@ const RECORD_FILE: &str = "install.json";
 pub enum InstallSource {
     /// A folder on this computer (an absolute path as the user gave it).
     Local { path: String },
+    /// A release of a GitHub repository: `repo` is `owner/name`, `tag` the release's tag.
+    Github { repo: String, tag: String },
+    /// A `plugin.toml` at an address the user gave, with the script next to it.
+    Url { url: String },
 }
 
 /// `install.json`: how the files in the plugin directory got there.

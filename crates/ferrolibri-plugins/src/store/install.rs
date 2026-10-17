@@ -7,7 +7,10 @@ use std::{
     hash::{BuildHasher, Hasher, RandomState},
     io::{self, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -87,6 +90,9 @@ pub struct Inspection {
     pub change: InstallChange,
     pub source: InstallSource,
     dir: PathBuf,
+    /// For a plugin that was downloaded: the directory the files were put in, which goes away
+    /// together with the last copy of the inspection.
+    _download: Option<Arc<Staging>>,
 }
 
 impl PluginStore {
@@ -95,6 +101,44 @@ impl PluginStore {
     /// is a successful result with [`Compatibility::Incompatible`], so the reasons can be shown.
     /// A manifest for an unsupported `api_version` cannot be read at all and is an error.
     pub fn inspect_local(&self, dir: &Path) -> Result<Inspection, Error> {
+        let mut inspection = self.inspect_dir(dir)?;
+        inspection.source = InstallSource::Local {
+            path: std::path::absolute(dir)
+                .unwrap_or_else(|_| dir.to_owned())
+                .to_string_lossy()
+                .into_owned(),
+        };
+        Ok(inspection)
+    }
+
+    /// Writes the files of a plugin that was downloaded into a directory of the store and
+    /// inspects them there. The files live as long as the inspection (or a copy of it) does.
+    /// `script` is `None` for a plugin that is not going to be installed anyway.
+    pub(crate) fn inspect_downloaded(
+        &self,
+        manifest: &[u8],
+        script: Option<(&str, &[u8])>,
+        source: InstallSource,
+    ) -> Result<Inspection, Error> {
+        fs::create_dir_all(&self.plugins_dir)
+            .map_err(|e| Error::io("create plugins directory", &self.plugins_dir, e))?;
+        sweep_stale(&self.plugins_dir, STALE_AFTER);
+        let staging = Staging::create(&self.plugins_dir)?;
+        write_file(&staging.path().join(MANIFEST_FILE), manifest)?;
+        if let Some((name, bytes)) = script {
+            // The name is the manifest's `entry`; a name that is not a plain file name is refused
+            // here, not left to the file system.
+            check_entry(name).map_err(|m| Error::invalid_data("copy plugin", staging.path(), m))?;
+            write_file(&staging.path().join(name), bytes)?;
+        }
+        let mut inspection = self.inspect_dir(staging.path())?;
+        inspection.source = source;
+        inspection._download = Some(Arc::new(staging));
+        Ok(inspection)
+    }
+
+    /// `inspect_local` without the source, which the callers fill in.
+    fn inspect_dir(&self, dir: &Path) -> Result<Inspection, Error> {
         let candidate = examine(dir)?;
         let compatibility = store_compatibility(&candidate.manifest);
         let change = match compatibility {
@@ -109,13 +153,9 @@ impl PluginStore {
             compatibility,
             size,
             change,
-            source: InstallSource::Local {
-                path: std::path::absolute(dir)
-                    .unwrap_or_else(|_| dir.to_owned())
-                    .to_string_lossy()
-                    .into_owned(),
-            },
+            source: InstallSource::Url { url: String::new() },
             dir: dir.to_owned(),
+            _download: None,
         })
     }
 
@@ -220,7 +260,7 @@ impl PluginStore {
         self.get(&id)
     }
 
-    fn change_for(&self, manifest: &Manifest) -> InstallChange {
+    pub(crate) fn change_for(&self, manifest: &Manifest) -> InstallChange {
         classify(
             self.read_installed(&manifest.id)
                 .ok()
@@ -256,7 +296,7 @@ impl PluginStore {
 }
 
 /// The contract's compatibility plus the store's own rule about reserved names.
-fn store_compatibility(manifest: &Manifest) -> Compatibility {
+pub(crate) fn store_compatibility(manifest: &Manifest) -> Compatibility {
     let mut reasons = manifest.compatibility(&app_version()).reasons().to_vec();
     if RESERVED_IDS.contains(&manifest.id.as_str()) {
         reasons.push(Reason::Invalid {
@@ -392,6 +432,7 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<(), Error> {
 }
 
 /// A directory being filled; removed on drop unless it was moved into place.
+#[derive(Debug)]
 struct Staging {
     path: PathBuf,
 }

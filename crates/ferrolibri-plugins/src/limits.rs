@@ -107,3 +107,13 @@ pub const MAX_XML_NODES: u32 = 200_000;
 pub const MAX_LOG_MESSAGE_CHARS: usize = 2000;
 /// ... and a call writes at most this many of them.
 pub const MAX_LOG_ENTRIES_PER_CALL: u32 = 200;
+
+// Installation by address (D10).
+
+/// Releases of a repository that are looked at (the first page of the API's answer).
+pub const MAX_RELEASES_LISTED: usize = 10;
+/// Manifests fetched at the same time while the releases are checked.
+pub const RELEASE_CHECK_WORKERS: usize = 4;
+/// Longest tag, name and date of a release that is shown; a release with a longer tag is skipped.
+pub const MAX_RELEASE_TAG_CHARS: usize = 100;
+pub const MAX_RELEASE_NAME_CHARS: usize = 200;

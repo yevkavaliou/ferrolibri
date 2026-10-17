@@ -12,6 +12,7 @@ mod host_error;
 pub mod http;
 pub mod limits;
 mod manifest;
+mod remote;
 mod runtime;
 mod search;
 mod store;
@@ -29,6 +30,10 @@ pub use http::{
 pub use manifest::{
     Compatibility, Limits, Manifest, ManifestError, Network, Reason, Setting, SettingKind,
     SettingValue,
+};
+pub use remote::{
+    AddressError, GithubEndpoint, GithubRepo, Release, ReleaseCheck, ReleaseList, ReleaseOptions,
+    RemoteError, RemoteInstaller, RemoteSource,
 };
 pub use runtime::{LoadedPlugin, LogLevel, LogRecord, LogSink, PluginFunction, PluginRuntime};
 pub use search::{
