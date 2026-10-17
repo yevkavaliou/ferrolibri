@@ -1472,6 +1472,7 @@ dependencies = [
 name = "ferrolibri-plugins"
 version = "0.1.2"
 dependencies = [
+ "dirs",
  "ferrolibri-core",
  "ferrolibri-plugins",
  "kuchikiki",
@@ -1482,6 +1483,8 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "toml",
  "ureq",
  "url",

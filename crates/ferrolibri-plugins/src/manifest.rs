@@ -405,10 +405,15 @@ impl Setting {
             );
         }
 
-        let Some(default) = &self.default else {
-            return;
-        };
-        let result = match (self.kind, default) {
+        if let Some(default) = &self.default {
+            check(&key("default"), self.check_value(default));
+        }
+    }
+
+    /// Whether `value` suits this setting: the type, the length, the address, the choice.
+    /// Used for `default` and for what the user stores.
+    pub(crate) fn check_value(&self, value: &SettingValue) -> Result<(), String> {
+        match (self.kind, value) {
             (SettingKind::Bool, SettingValue::Bool(_)) => Ok(()),
             (SettingKind::Bool, _) => Err("must be true or false".into()),
             (_, SettingValue::Bool(_)) => Err("must be a string".into()),
@@ -423,8 +428,7 @@ impl Setting {
                     Err("must be one of the options".into())
                 }
             }
-        };
-        check(&key("default"), result);
+        }
     }
 }
 
@@ -458,7 +462,7 @@ fn list_limit(count: usize, max: usize, what: &str) -> Result<(), String> {
 }
 
 /// `[a-z0-9][a-z0-9-]{1,39}`
-fn check_id(id: &str) -> Result<(), String> {
+pub(crate) fn check_id(id: &str) -> Result<(), String> {
     let length_ok = (MIN_ID_CHARS..=MAX_ID_CHARS).contains(&id.len());
     let mut bytes = id.bytes();
     let first_ok = bytes
@@ -481,7 +485,7 @@ fn check_semver(value: &str) -> Result<(), String> {
 }
 
 /// A plain file name ending in `.js`: v1 plugins are two files, no sub-folders.
-fn check_entry(entry: &str) -> Result<(), String> {
+pub(crate) fn check_entry(entry: &str) -> Result<(), String> {
     text::line(entry, MAX_ENTRY_CHARS)?;
     let plain = !entry.starts_with('.')
         && !entry.contains(['/', '\\', ':'])

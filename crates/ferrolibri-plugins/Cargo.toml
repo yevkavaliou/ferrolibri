@@ -26,6 +26,9 @@ kuchikiki = "=0.8.8-speedreader"
 roxmltree = { workspace = true }
 log = "0.4"
 url = "2"
+# Where the plugins and their settings live (D11), and the SHA-256 of an installed script.
+dirs = { workspace = true }
+sha2 = "0.10"
 # Only to recognise TLS failures: `ureq` hands them over as a bare `rustls::Error` in an `io::Error`.
 rustls = { version = "0.23", default-features = false, features = ["std"] }
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
@@ -33,3 +36,4 @@ ureq = { version = "3", default-features = false, features = ["rustls", "platfor
 [dev-dependencies]
 # Turns `test-support` on for this crate's integration tests.
 ferrolibri-plugins = { path = ".", features = ["test-support"] }
+tempfile = "3"

@@ -5,6 +5,9 @@ use std::time::Duration;
 /// `plugin.toml` larger than this is rejected before parsing.
 pub const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 
+/// A plugin's script (`entry`) larger than this is not installed (D2).
+pub const MAX_SCRIPT_BYTES: usize = 1024 * 1024;
+
 pub const MIN_ID_CHARS: usize = 2;
 pub const MAX_ID_CHARS: usize = 40;
 pub const MAX_NAME_CHARS: usize = 60;

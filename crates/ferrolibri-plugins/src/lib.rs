@@ -3,7 +3,8 @@
 //! It fixes what a plugin may declare (`plugin.toml`) and what it may return (JSON), and rejects
 //! everything else. Everything that comes from a plugin is untrusted. The reference document is
 //! `docs/PLUGIN_API.md`. The crate also holds the HTTP layer through which all network access of
-//! the app and of plugins goes ([`http`]); and the QuickJS runtime that runs plugins ([`PluginRuntime`]).
+//! the app and of plugins goes ([`http`]); and the QuickJS runtime that runs plugins ([`PluginRuntime`]); and the store of installed plugins
+//! ([`PluginStore`]).
 
 mod domain;
 mod download;
@@ -13,6 +14,7 @@ pub mod limits;
 mod manifest;
 mod runtime;
 mod search;
+mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 mod text;
@@ -32,6 +34,10 @@ pub use runtime::{LoadedPlugin, LogLevel, LogRecord, LogSink, PluginFunction, Pl
 pub use search::{
     Archive, Offer, ParsedPage, ResponseError, SearchHit, SearchPage, SearchQuery, Warning,
     merge_details, parse_search_page,
+};
+pub use store::{
+    Downgrade, Inspection, InstallChange, InstallRecord, InstallSource, InstalledPlugin,
+    Permissions, PluginStatus, PluginStore,
 };
 
 use ferrolibri_core::{Error, ErrorKind};
