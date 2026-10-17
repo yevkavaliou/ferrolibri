@@ -470,6 +470,54 @@ mod tests {
     }
 
     #[test]
+    fn fb2_is_prepared_by_conversion_for_every_device_route() {
+        let fixture = crate::test_support::Fixture::new();
+        let files = vec![BookFile {
+            format: Format::Fb2,
+            path: fixture.book.join("A small book.fb2"),
+        }];
+        let calibre = backend(converter::BackendKind::EbookConvert, false);
+        for (kind, mount, target) in [
+            (DeviceKind::Kobo, &fixture.kobo, Format::Epub),
+            (DeviceKind::Kindle, &fixture.kindle, Format::Azw3),
+        ] {
+            let device = crate::test_support::device(kind, mount);
+            let PreparationPlan::Convert(plan) = plan_preparation(
+                &files,
+                &device,
+                PreparationOptions::default(),
+                std::slice::from_ref(&calibre),
+            )
+            .unwrap() else {
+                panic!("FB2 must be converted, not sent as is");
+            };
+            assert_eq!(plan.source, files[0]);
+            assert_eq!(plan.target, target);
+            let mut missing = calibre.clone();
+            missing.status = converter::BackendStatus::Missing;
+            let error =
+                plan_preparation(&files, &device, PreparationOptions::default(), &[missing])
+                    .unwrap_err();
+            assert!(matches!(
+                error.kind,
+                crate::ErrorKind::ConversionUnavailable { .. }
+            ));
+        }
+        // Kobo with KEPUB preference: FB2 -> EPUB -> KEPUB via kepubify, or direct with a plugin.
+        let kobo = crate::test_support::device(DeviceKind::Kobo, &fixture.kobo);
+        let tools = [calibre, backend(converter::BackendKind::Kepubify, true)];
+        assert!(matches!(
+            plan_preparation(&files, &kobo, prefer_kepub(), &tools).unwrap(),
+            PreparationPlan::ViaEpub { .. }
+        ));
+        let plugin = backend(converter::BackendKind::EbookConvert, true);
+        assert!(matches!(
+            plan_preparation(&files, &kobo, prefer_kepub(), &[plugin]).unwrap(),
+            PreparationPlan::Convert(plan) if plan.target == Format::Kepub
+        ));
+    }
+
+    #[test]
     fn two_step_failure_cleans_intermediate_and_partial_files() {
         let fixture = crate::test_support::Fixture::new();
         let device = crate::test_support::device(DeviceKind::Kobo, &fixture.kobo);

@@ -31,6 +31,10 @@ fn recognition_excludes_service_unknown_and_temporary_files() {
         "~book.epub",
         ".epub",
         "book.kepub",
+        "book.fb2.zip",
+        "book.fb2.tmp",
+        ".book.fb2",
+        "~book.fb2",
     ] {
         assert_eq!(scanner::extract_format(name), None, "{name}");
     }
@@ -42,9 +46,48 @@ fn recognition_excludes_service_unknown_and_temporary_files() {
         ("book.AZW3", Format::Azw3),
         ("book.DoCx", Format::Docx),
         ("book.tXT", Format::Txt),
+        ("book.fb2", Format::Fb2),
+        ("BOOK.Fb2", Format::Fb2),
     ] {
         assert_eq!(scanner::extract_format(name), Some(format), "{name}");
     }
+}
+
+#[test]
+fn fb2_label_round_trips_and_is_converter_only_input() {
+    assert_eq!(Format::Fb2.label(), "FB2");
+    assert_eq!(Format::from_label("fb2"), Some(Format::Fb2));
+    assert_eq!(Format::from_label("FB2.ZIP"), None);
+    assert!(Format::Fb2.ebook_convert_input());
+    assert!(!Format::Fb2.kepubify_input());
+    assert_eq!(serde_json::to_string(&Format::Fb2).unwrap(), "\"FB2\"");
+}
+
+#[test]
+fn fb2_is_never_sent_to_devices_directly_and_is_a_converter_source() {
+    let files = vec![BookFile {
+        format: Format::Fb2,
+        path: "book.fb2".into(),
+    }];
+    assert_eq!(
+        converter::find_source_file(&files),
+        Some(PathBuf::from("book.fb2"))
+    );
+    let formats = targets(&files, true, true)
+        .into_iter()
+        .map(|(f, _)| f)
+        .collect::<Vec<_>>();
+    assert!(formats.contains(&Format::Epub));
+    assert!(formats.contains(&Format::Azw3));
+    assert!(!formats.contains(&Format::Fb2));
+    // kepubify reads only EPUB, so a direct FB2 -> KEPUB route needs a KEPUB-capable Calibre.
+    assert!(!formats.contains(&Format::Kepub));
+    for kind in [DeviceKind::Kobo, DeviceKind::Kindle] {
+        let device = test_support::device(kind, &PathBuf::new());
+        assert!(!device.supported_formats().contains(&Format::Fb2));
+    }
+    // Without ebook-convert there is no route at all.
+    assert!(targets(&files, true, false).is_empty());
 }
 
 #[test]

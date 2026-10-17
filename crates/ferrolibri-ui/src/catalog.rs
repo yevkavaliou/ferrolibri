@@ -180,6 +180,21 @@ mod tests {
         assert!(c.search_index.search("zolw").is_empty());
     }
     #[test]
+    fn fb2_appears_in_format_facet_and_filter() {
+        use ferrolibri_core::book::BookFile;
+        let mut a = book(1, "Автор", "Книга");
+        a.files = vec![BookFile {
+            format: Format::Fb2,
+            path: "file.fb2".into(),
+        }];
+        let c = Catalog::new(vec![a, book(2, "Другой", "Other")]);
+        assert_eq!(c.formats, [(Format::Fb2, 1)].into());
+        assert_eq!(
+            c.filter(&Filter::Format(Format::Fb2)),
+            vec![BookId::Calibre(1)]
+        );
+    }
+    #[test]
     fn twenty_thousand_search_budget() {
         let c = Catalog::new(
             (0..20_000)

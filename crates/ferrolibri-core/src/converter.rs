@@ -438,11 +438,12 @@ fn source_rank(format: Format) -> usize {
     match format {
         Format::Epub => 0,
         Format::Azw3 => 1,
-        Format::Docx => 2,
-        Format::Mobi => 3,
-        Format::Txt => 4,
-        Format::Pdf => 5,
-        Format::Kepub => 6,
+        Format::Fb2 => 2,
+        Format::Docx => 3,
+        Format::Mobi => 4,
+        Format::Txt => 5,
+        Format::Pdf => 6,
+        Format::Kepub => 7,
     }
 }
 
