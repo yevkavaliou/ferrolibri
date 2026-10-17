@@ -31,6 +31,14 @@ pub enum ErrorKind {
         status: ExitStatus,
         stderr: Vec<u8>,
     },
+    /// A network request made on behalf of the app failed. The detail (timeout, DNS, TLS, ...)
+    /// is kept by the layer that made the request.
+    Network,
+    /// A plugin misbehaved or returned data that violates the plugin contract.
+    Plugin {
+        id: String,
+        message: String,
+    },
 }
 
 #[derive(Debug)]
@@ -104,6 +112,8 @@ impl fmt::Display for Error {
                 ": {program} failed ({status}): {}",
                 String::from_utf8_lossy(stderr).trim()
             ),
+            ErrorKind::Network => write!(f, ": network error"),
+            ErrorKind::Plugin { id, message } => write!(f, ": plugin {id}: {message}"),
         }
     }
 }

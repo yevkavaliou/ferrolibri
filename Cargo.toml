@@ -4,6 +4,7 @@ members = [
     "crates/ferrolibri",
     "crates/ferrolibri-core",
     "crates/ferrolibri-ui",
+    "crates/ferrolibri-plugins",
 ]
 default-members = ["crates/ferrolibri-core", "crates/ferrolibri", "crates/ferrolibri-ui"]
 exclude = ["vendor"]
