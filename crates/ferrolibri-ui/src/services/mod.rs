@@ -5,7 +5,9 @@ pub mod jobs;
 use crate::settings::UiSettings;
 use ferrolibri_core::{
     book::{BookFile, Format},
-    converter::Workspace,
+    calibre,
+    config::{self, LibraryPathState},
+    converter::{CancellationToken, Workspace},
     cover::CoverFile,
     device::{Device, PreparationOptions},
     jobs::JobRequest,
@@ -13,10 +15,24 @@ use ferrolibri_core::{
 use jobs::{Coordinator, JobId, JobUpdate};
 use std::{
     future::Future,
-    path::PathBuf,
+    path::{Path, PathBuf},
     pin::Pin,
     sync::{Arc, Mutex},
 };
+
+/// How many entries of a folder without a library are shown before creating one.
+pub const FIRST_FILES_SHOWN: usize = 5;
+
+/// What the library-choice screen needs to know about a folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LibraryInspection {
+    pub path: PathBuf,
+    pub state: LibraryPathState,
+    /// First entries of a folder that has files but no library.
+    pub files: Vec<String>,
+    /// `calibredb` is installed; only looked up for folders where a library could be created.
+    pub calibre_available: bool,
+}
 
 pub type ServiceFuture<T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send>>;
 pub trait Services: Send + Sync {
@@ -67,6 +83,32 @@ pub trait Services: Send + Sync {
     fn load_library(&self) -> ServiceFuture<Option<PathBuf>>;
     fn save_library(&self, path: PathBuf) -> ServiceFuture<PathBuf>;
     fn validate_library(&self, input: String) -> ServiceFuture<PathBuf>;
+    /// Classify the folder typed or picked on the setup screen. Nothing is written.
+    /// `native` is a path from the folder picker and takes precedence over `input`.
+    fn inspect_library(
+        &self,
+        input: String,
+        native: Option<PathBuf>,
+    ) -> ServiceFuture<LibraryInspection> {
+        blocking(move || {
+            let path = match native {
+                Some(path) => path,
+                None => config::sanitize_path(&input)
+                    .map_err(|e| format!("Enter a library folder. {e}"))?,
+            };
+            inspect(path)
+        })
+    }
+    /// Inspect the library saved in the config, if there is one. Used at startup to
+    /// explain why it cannot be opened; an unreadable config yields `None`.
+    fn inspect_saved_library(&self) -> ServiceFuture<Option<LibraryInspection>> {
+        Box::pin(async { Ok(None) })
+    }
+    /// Create an empty library with `calibredb`. `among_files` is set only after the
+    /// user explicitly confirmed creating one in a folder that already has files.
+    fn create_library(&self, path: PathBuf, among_files: bool) -> ServiceFuture<PathBuf> {
+        blocking(move || create_library(path, among_files))
+    }
     fn validate_export(&self, library: PathBuf, output: PathBuf) -> ServiceFuture<PathBuf> {
         blocking(move || {
             ferrolibri_core::converter::validate_output_dir(&library, &output).map_err(|e| {
@@ -195,6 +237,78 @@ fn validate_library(path: PathBuf) -> Result<PathBuf, String> {
         Err(error) => Err(format!("Could not access the library folder. {error}")),
     }
 }
+fn inspect(path: PathBuf) -> Result<LibraryInspection, String> {
+    let state = config::inspect_library_path(&path)
+        .map_err(|error| format!("Could not access the library folder. {error}"))?;
+    let creatable = matches!(
+        state,
+        LibraryPathState::NotLibraryEmpty | LibraryPathState::NotLibraryNotEmpty
+    );
+    let files = if state == LibraryPathState::NotLibraryNotEmpty {
+        config::first_entries(&path, FIRST_FILES_SHOWN).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let calibre_available = creatable && matches!(calibre::find(), Ok(Some(_)));
+    Ok(LibraryInspection {
+        path,
+        state,
+        files,
+        calibre_available,
+    })
+}
+
+/// Calibre on Windows counts the whole library path; refuse before running anything.
+fn long_path_message(path: &Path, windows: bool) -> Option<String> {
+    let length = path.as_os_str().to_string_lossy().chars().count();
+    (windows && length > calibre::WINDOWS_LIBRARY_PATH_LIMIT).then(|| {
+        format!(
+            "This path is {length} characters long; Calibre on Windows supports {} or fewer. \
+             Choose a shorter folder. Nothing was created.",
+            calibre::WINDOWS_LIBRARY_PATH_LIMIT
+        )
+    })
+}
+
+fn create_library(path: PathBuf, among_files: bool) -> Result<PathBuf, String> {
+    if let Some(message) = long_path_message(&path, cfg!(windows)) {
+        return Err(message);
+    }
+    // The folder may have changed since it was inspected: check again before writing.
+    let state = config::inspect_library_path(&path)
+        .map_err(|error| format!("Could not access the library folder. {error}"))?;
+    if !matches!(
+        (state, among_files),
+        (LibraryPathState::NotLibraryEmpty, _) | (LibraryPathState::NotLibraryNotEmpty, true)
+    ) {
+        return Err(
+            "The folder changed since it was checked. Check it again before creating a library."
+                .into(),
+        );
+    }
+    let cli = calibre::require().map_err(|error| error.to_string())?;
+    let cancel = CancellationToken::default();
+    let created = if state == LibraryPathState::NotLibraryEmpty {
+        cli.create_library(&path, &cancel)
+    } else {
+        cli.create_library_among_files(&path, &cancel)
+    };
+    created.map_err(|error| format!("Could not create the library. {error}"))?;
+    validate_library(path)
+}
+
+fn saved_library_message(path: &Path, state: LibraryPathState) -> String {
+    let reason = match state {
+        LibraryPathState::Missing => "is unavailable",
+        LibraryPathState::NotDirectory => "is not a folder",
+        _ => "has no metadata.db",
+    };
+    format!(
+        "The saved library {} {reason}. Open it again or choose another folder.",
+        path.display()
+    )
+}
+
 fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> ServiceFuture<T> {
@@ -238,8 +352,25 @@ impl Services for RealServices {
                         path.display()
                     )
                 })?
-                .map(|config| validate_library(config.library_path))
+                .map(
+                    |config| match config::inspect_library_path(&config.library_path) {
+                        Ok(LibraryPathState::Ready) => Ok(config.library_path),
+                        Ok(state) => Err(saved_library_message(&config.library_path, state)),
+                        Err(error) => Err(format!(
+                            "Could not access the saved library folder. {error}"
+                        )),
+                    },
+                )
                 .transpose()
+        })
+    }
+    fn inspect_saved_library(&self) -> ServiceFuture<Option<LibraryInspection>> {
+        let path = self.config_path.clone();
+        blocking(move || match config::Config::load_from(&path) {
+            Ok(Some(config)) if !config.library_path.as_os_str().is_empty() => {
+                inspect(config.library_path).map(Some)
+            }
+            _ => Ok(None),
         })
     }
     fn validate_library(&self, input: String) -> ServiceFuture<PathBuf> {
@@ -398,6 +529,129 @@ mod tests {
         });
         services.shutdown();
     }
+    #[test]
+    fn inspection_reports_every_folder_state_without_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        let documents = dir.path().join("documents");
+        std::fs::create_dir(&documents).unwrap();
+        for name in ["a.txt", "b.txt"] {
+            std::fs::write(documents.join(name), b"x").unwrap();
+        }
+        let file = dir.path().join("book.epub");
+        std::fs::write(&file, b"x").unwrap();
+        let library = dir.path().join("library");
+        std::fs::create_dir(&library).unwrap();
+        std::fs::write(library.join("metadata.db"), b"marker").unwrap();
+        let state = |path: &Path| inspect(path.to_owned()).unwrap();
+        assert_eq!(state(&library).state, LibraryPathState::Ready);
+        assert!(
+            !state(&library).calibre_available,
+            "only asked where creation is possible"
+        );
+        assert_eq!(state(&empty).state, LibraryPathState::NotLibraryEmpty);
+        let with_files = state(&documents);
+        assert_eq!(with_files.state, LibraryPathState::NotLibraryNotEmpty);
+        assert_eq!(with_files.files, ["a.txt", "b.txt"]);
+        assert_eq!(state(&file).state, LibraryPathState::NotDirectory);
+        let missing = state(&dir.path().join("unplugged"));
+        assert_eq!(missing.state, LibraryPathState::Missing);
+        assert!(!missing.calibre_available && missing.files.is_empty());
+        assert_eq!(std::fs::read_dir(&empty).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn creation_is_refused_for_missing_files_and_changed_folders_before_calibre_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("unplugged");
+        assert!(
+            create_library(missing.clone(), false)
+                .unwrap_err()
+                .contains("changed")
+        );
+        assert!(!missing.exists(), "a missing folder is never created");
+        let documents = dir.path().join("documents");
+        std::fs::create_dir(&documents).unwrap();
+        std::fs::write(documents.join("notes.txt"), b"keep").unwrap();
+        // A folder with files needs the explicit confirmation flag.
+        assert!(
+            create_library(documents.clone(), false)
+                .unwrap_err()
+                .contains("changed")
+        );
+        assert_eq!(std::fs::read_dir(&documents).unwrap().count(), 1);
+        let library = dir.path().join("library");
+        std::fs::create_dir(&library).unwrap();
+        std::fs::write(library.join("metadata.db"), b"marker").unwrap();
+        assert!(
+            create_library(library.clone(), true)
+                .unwrap_err()
+                .contains("changed")
+        );
+        assert_eq!(
+            std::fs::read(library.join("metadata.db")).unwrap(),
+            b"marker"
+        );
+    }
+
+    #[test]
+    fn windows_long_paths_are_explained_before_calibredb_is_used() {
+        let long = PathBuf::from(format!("D:\\{}", "x".repeat(100)));
+        let message = long_path_message(&long, true).unwrap();
+        assert!(
+            message.contains("103 characters") && message.contains("88"),
+            "{message}"
+        );
+        assert!(long_path_message(&long, false).is_none());
+        let short = PathBuf::from(format!("D:\\{}", "x".repeat(85)));
+        assert_eq!(short.as_os_str().len(), 88);
+        assert!(long_path_message(&short, true).is_none());
+    }
+
+    #[test]
+    fn saved_library_inspection_explains_a_lost_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+        let services =
+            RealServices::with_paths(config_path.clone(), dir.path().join("ui.toml")).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            assert!(services.inspect_saved_library().await.unwrap().is_none());
+            let library = dir.path().join("Calibre Library");
+            std::fs::create_dir(&library).unwrap();
+            std::fs::write(library.join("metadata.db"), b"marker").unwrap();
+            ferrolibri_core::config::Config {
+                library_path: library.clone(),
+            }
+            .save_to(&config_path)
+            .unwrap();
+            let ready = services.inspect_saved_library().await.unwrap().unwrap();
+            assert_eq!(ready.state, LibraryPathState::Ready);
+            std::fs::remove_file(library.join("metadata.db")).unwrap();
+            let lost = services.inspect_saved_library().await.unwrap().unwrap();
+            assert_eq!(lost.state, LibraryPathState::NotLibraryEmpty);
+            let message = services.load_library().await.unwrap_err();
+            assert!(message.contains("no metadata.db") && message.contains("Open it again"));
+            std::fs::remove_dir(&library).unwrap();
+            let gone = services.inspect_saved_library().await.unwrap().unwrap();
+            assert_eq!(gone.state, LibraryPathState::Missing);
+            assert!(
+                services
+                    .load_library()
+                    .await
+                    .unwrap_err()
+                    .contains("unavailable")
+            );
+            std::fs::write(&config_path, b"invalid = [").unwrap();
+            assert!(services.inspect_saved_library().await.unwrap().is_none());
+        });
+        services.shutdown();
+    }
+
     #[test]
     fn real_services_use_background_io_for_settings_and_covers() {
         let dir = tempfile::tempdir().unwrap();

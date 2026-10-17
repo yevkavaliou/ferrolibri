@@ -156,25 +156,78 @@ fn resolve_path(path: &Path) -> Result<PathBuf, crate::Error> {
     std::path::absolute(&expanded).map_err(|e| crate::Error::io("resolve library path", path, e))
 }
 
+/// What a folder chosen as the library location contains.
+///
+/// `Missing` is deliberately separate from the "not a library" states: an unplugged
+/// disk or an offline network share looks the same as a mistyped path, and the caller
+/// must never offer to create a library there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LibraryPathState {
+    /// A directory containing a `metadata.db` file.
+    Ready,
+    /// The path does not exist.
+    Missing,
+    /// An existing, completely empty directory: a new library can be created here.
+    NotLibraryEmpty,
+    /// A directory with entries but without `metadata.db`.
+    NotLibraryNotEmpty,
+    /// The path exists but is not a directory.
+    NotDirectory,
+}
+
+/// Classify `path` without writing anything. Access errors other than "not found" are
+/// returned as errors, not mapped to a state, so that they never lead to creation.
+pub fn inspect_library_path(path: &Path) -> Result<LibraryPathState, crate::Error> {
+    if path.as_os_str().is_empty() {
+        return Err(crate::Error {
+            operation: "inspect library path",
+            path: None,
+            kind: crate::ErrorKind::InvalidInput,
+        });
+    }
+    match fs::metadata(path) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => return Ok(LibraryPathState::NotDirectory),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(LibraryPathState::Missing),
+        Err(e) => return Err(crate::Error::io("validate library directory", path, e)),
+    }
+    let database = path.join("metadata.db");
+    match fs::metadata(&database) {
+        Ok(meta) if meta.is_file() => return Ok(LibraryPathState::Ready),
+        Ok(_) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(crate::Error::io("validate library database", &database, e)),
+    }
+    let mut entries =
+        fs::read_dir(path).map_err(|e| crate::Error::io("read library directory", path, e))?;
+    match entries.next() {
+        None => Ok(LibraryPathState::NotLibraryEmpty),
+        Some(Ok(_)) => Ok(LibraryPathState::NotLibraryNotEmpty),
+        Some(Err(e)) => Err(crate::Error::io("read library directory", path, e)),
+    }
+}
+
+/// Names of up to `limit` entries of a directory, sorted, for showing the user what
+/// is already in a folder before a library is created next to it.
+pub fn first_entries(path: &Path, limit: usize) -> Result<Vec<String>, crate::Error> {
+    let mut names = Vec::new();
+    for entry in fs::read_dir(path).map_err(|e| crate::Error::io("read folder", path, e))? {
+        if names.len() >= limit {
+            break;
+        }
+        let entry = entry.map_err(|e| crate::Error::io("read folder", path, e))?;
+        names.push(entry.file_name().to_string_lossy().into_owned());
+    }
+    names.sort();
+    Ok(names)
+}
+
 /// just a really base check of metadata.db
 pub fn is_calibre_library(path: &Path) -> Result<bool, crate::Error> {
     if path.as_os_str().is_empty() {
         return Ok(false);
     }
-    let is_dir = match fs::metadata(path) {
-        Ok(meta) => meta.is_dir(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(crate::Error::io("validate library directory", path, e)),
-    };
-    if !is_dir {
-        return Ok(false);
-    }
-    let database = path.join("metadata.db");
-    match fs::metadata(&database) {
-        Ok(meta) => Ok(meta.is_file()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(crate::Error::io("validate library database", &database, e)),
-    }
+    Ok(inspect_library_path(path)? == LibraryPathState::Ready)
 }
 
 #[cfg(test)]

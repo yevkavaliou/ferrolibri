@@ -363,3 +363,197 @@ fn clicking_send_queues_one_job_per_selected_book_and_both_reach_the_reader() {
     assert_eq!(test_support::snapshot(&fixture.library), library_before);
     services.shutdown();
 }
+
+// Library choice screen (plugins plan item 3, design gap G1).
+mod library_states {
+    use super::*;
+    use ferrolibri_core::config::LibraryPathState;
+    use ferrolibri_ui::services::LibraryInspection;
+
+    fn setup_state(
+        state: LibraryPathState,
+        files: &[&str],
+        calibre_available: bool,
+    ) -> (State, test_support::Fixture) {
+        let fixture = test_support::Fixture::new();
+        let path = fixture.root.join("chosen");
+        let mut app = State::default();
+        app.screen = Screen::Setup;
+        app.setup_path = path.display().to_string();
+        let _ = app::update(
+            &mut app,
+            Message::LibraryInspected {
+                generation: 0,
+                result: Ok(LibraryInspection {
+                    path,
+                    state,
+                    files: files.iter().map(|name| name.to_string()).collect(),
+                    calibre_available,
+                }),
+            },
+            &services(&fixture),
+        );
+        (app, fixture)
+    }
+    fn texts(state: &State, present: &[&str], absent: &[&str]) {
+        headless();
+        let mut ui = iced_test::simulator(app::view(state));
+        for text in present {
+            assert!(ui.find(*text).is_ok(), "{text} should be shown");
+        }
+        for text in absent {
+            assert!(ui.find(*text).is_err(), "{text} must not be shown");
+        }
+    }
+
+    #[test]
+    fn a_missing_folder_offers_retry_and_choose_another_but_never_creation() {
+        let (mut state, fixture) = setup_state(LibraryPathState::Missing, &[], true);
+        texts(
+            &state,
+            &["Folder unavailable", "Try again", "Choose another…"],
+            &["Create library", "No Calibre library here"],
+        );
+        // Even a forced message cannot create anything for a missing folder.
+        let services = services(&fixture);
+        let _ = app::update(&mut state, Message::SetupCreateLibrary, &services);
+        assert!(!state.setup_busy && !state.setup_creating);
+        interact(&mut state, &services, |ui| {
+            ui.click("Choose another…").unwrap();
+        });
+        assert!(state.setup_path.is_empty() && state.setup_prompt.is_none());
+        texts(&state, &["Continue"], &["Folder unavailable"]);
+    }
+
+    #[test]
+    fn an_empty_folder_asks_before_creating_and_blocks_input_while_creating() {
+        let (mut state, fixture) = setup_state(LibraryPathState::NotLibraryEmpty, &[], true);
+        texts(
+            &state,
+            &[
+                "No Calibre library here",
+                "Create library",
+                "Choose another…",
+            ],
+            &[
+                "Folder unavailable",
+                "Calibre is needed to create a library",
+            ],
+        );
+        let services = services(&fixture);
+        interact(&mut state, &services, |ui| {
+            ui.click("Create library").unwrap();
+        });
+        assert!(state.setup_busy && state.setup_creating);
+        texts(&state, &["Creating the library…"], &[]);
+        // A second click while the first creation runs does nothing.
+        let before = state.setup_creating;
+        let _ = app::update(&mut state, Message::SetupCreateLibrary, &services);
+        assert_eq!(state.setup_creating, before);
+    }
+
+    #[test]
+    fn a_folder_with_files_needs_a_separate_confirmation_and_lists_them() {
+        let (mut state, fixture) = setup_state(
+            LibraryPathState::NotLibraryNotEmpty,
+            &["Photos", "notes.txt"],
+            true,
+        );
+        texts(
+            &state,
+            &[
+                "This folder has files but no Calibre library",
+                "• Photos",
+                "• notes.txt",
+                "Create library",
+            ],
+            &["No Calibre library here"],
+        );
+        let services = services(&fixture);
+        // Unconfirmed: the button is disabled and the message is ignored.
+        interact(&mut state, &services, |ui| {
+            let _ = ui.click("Create library");
+        });
+        assert!(!state.setup_busy);
+        let _ = app::update(&mut state, Message::SetupCreateLibrary, &services);
+        assert!(!state.setup_busy);
+        interact(&mut state, &services, |ui| {
+            ui.click("Create a library in this folder anyway").unwrap();
+        });
+        assert!(state.setup_prompt.as_ref().unwrap().confirmed);
+        interact(&mut state, &services, |ui| {
+            ui.click("Create library").unwrap();
+        });
+        assert!(state.setup_busy && state.setup_creating);
+    }
+
+    #[test]
+    fn missing_calibre_replaces_creation_with_the_install_command_and_check_again() {
+        for (library_state, files) in [
+            (LibraryPathState::NotLibraryEmpty, vec![]),
+            (LibraryPathState::NotLibraryNotEmpty, vec!["notes.txt"]),
+        ] {
+            let (mut state, fixture) = setup_state(library_state, &files, false);
+            texts(
+                &state,
+                &[
+                    "Calibre is needed to create a library",
+                    app::calibre_install_hint(),
+                    "Check again",
+                    "Choose another…",
+                ],
+                &["Create library"],
+            );
+            let _ = app::update(&mut state, Message::SetupCreateLibrary, &services(&fixture));
+            assert!(!state.setup_busy, "creation needs Calibre");
+            interact(&mut state, &services(&fixture), |ui| {
+                ui.click("Check again").unwrap();
+            });
+            assert!(state.setup_busy, "Check again inspects the folder again");
+            assert!(state.setup_prompt.is_none());
+        }
+    }
+
+    #[test]
+    fn a_file_instead_of_a_folder_is_an_error_without_a_card() {
+        let (state, _fixture) = setup_state(LibraryPathState::NotDirectory, &[], true);
+        assert!(state.setup_prompt.is_none());
+        assert_eq!(
+            state.setup_error.as_deref(),
+            Some("This path is a file, not a folder. Choose a folder.")
+        );
+        texts(
+            &state,
+            &["This path is a file, not a folder. Choose a folder."],
+            &["Create library", "Folder unavailable"],
+        );
+    }
+
+    #[test]
+    fn editing_the_path_dismisses_the_card_and_a_ready_folder_shows_none() {
+        let (mut state, fixture) = setup_state(LibraryPathState::NotLibraryEmpty, &[], true);
+        let services = services(&fixture);
+        let _ = app::update(
+            &mut state,
+            Message::SetupPathChanged("other".into()),
+            &services,
+        );
+        assert!(state.setup_prompt.is_none());
+        let ready = LibraryInspection {
+            path: fixture.library.clone(),
+            state: LibraryPathState::Ready,
+            files: vec![],
+            calibre_available: false,
+        };
+        let generation = 0;
+        let _ = app::update(
+            &mut state,
+            Message::LibraryInspected {
+                generation,
+                result: Ok(ready),
+            },
+            &services,
+        );
+        assert!(state.setup_prompt.is_none() && state.setup_error.is_none());
+    }
+}

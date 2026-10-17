@@ -3,7 +3,7 @@ mod test_support;
 
 use ferrolibri_core::{
     ErrorKind,
-    config::{self, Config},
+    config::{self, Config, LibraryPathState},
 };
 use std::{
     fs,
@@ -153,4 +153,67 @@ fn non_unicode_path_serialization_fails_without_loss_or_overwrite() {
     };
     assert!(config.save_to(&path).is_err());
     assert_eq!(fs::read(&path).unwrap(), b"previous config");
+}
+
+#[test]
+fn library_path_states_distinguish_missing_empty_and_foreign_folders() {
+    let fixture = Fixture::new();
+    let inspect = |path: &Path| config::inspect_library_path(path).unwrap();
+    let empty = fixture.root.join("empty");
+    fs::create_dir(&empty).unwrap();
+    assert_eq!(inspect(&empty), LibraryPathState::NotLibraryEmpty);
+    assert_eq!(
+        inspect(&fixture.root.join("unplugged/Calibre Library")),
+        LibraryPathState::Missing
+    );
+    let documents = fixture.root.join("documents");
+    fs::create_dir_all(documents.join("Photos")).unwrap();
+    fs::write(documents.join("notes.txt"), b"x").unwrap();
+    assert_eq!(inspect(&documents), LibraryPathState::NotLibraryNotEmpty);
+    let file = fixture.root.join("book.epub");
+    fs::write(&file, b"x").unwrap();
+    assert_eq!(inspect(&file), LibraryPathState::NotDirectory);
+    // A directory named metadata.db is not a database.
+    let fake = fixture.root.join("fake");
+    fs::create_dir_all(fake.join("metadata.db")).unwrap();
+    assert_eq!(inspect(&fake), LibraryPathState::NotLibraryNotEmpty);
+    assert!(!config::is_calibre_library(&fake).unwrap());
+    fs::write(fixture.library.join("metadata.db"), b"synthetic marker").unwrap();
+    assert_eq!(inspect(&fixture.library), LibraryPathState::Ready);
+    assert!(config::is_calibre_library(&fixture.library).unwrap());
+    // A saved library whose database disappeared is no longer ready.
+    fs::remove_file(fixture.library.join("metadata.db")).unwrap();
+    assert_ne!(inspect(&fixture.library), LibraryPathState::Ready);
+}
+
+#[test]
+fn inspecting_a_library_path_never_writes_and_rejects_empty_input() {
+    let fixture = Fixture::new();
+    let empty = fixture.root.join("empty");
+    fs::create_dir(&empty).unwrap();
+    config::inspect_library_path(&empty).unwrap();
+    assert_eq!(fs::read_dir(&empty).unwrap().count(), 0);
+    assert!(matches!(
+        config::inspect_library_path(Path::new(""))
+            .unwrap_err()
+            .kind,
+        ErrorKind::InvalidInput
+    ));
+    assert!(!config::is_calibre_library(&fixture.root.join("missing")).unwrap());
+}
+
+#[test]
+fn first_entries_are_sorted_and_limited() {
+    let fixture = Fixture::new();
+    let folder = fixture.root.join("documents");
+    fs::create_dir_all(folder.join("Photos")).unwrap();
+    for name in ["b.txt", "a.txt", "c.txt"] {
+        fs::write(folder.join(name), b"x").unwrap();
+    }
+    assert_eq!(
+        config::first_entries(&folder, 10).unwrap(),
+        ["Photos", "a.txt", "b.txt", "c.txt"]
+    );
+    assert_eq!(config::first_entries(&folder, 2).unwrap().len(), 2);
+    assert!(config::first_entries(&fixture.root.join("missing"), 3).is_err());
 }

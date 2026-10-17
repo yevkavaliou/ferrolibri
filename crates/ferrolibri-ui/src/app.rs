@@ -2,7 +2,7 @@ use crate::{
     keymap,
     response_guard::{GenerationGuard, RequestKey, ResponseGuard},
     services::{
-        Services,
+        LibraryInspection, Services,
         jobs::{JobId, JobView},
     },
     settings::UiSettings,
@@ -10,6 +10,7 @@ use crate::{
 };
 use ferrolibri_core::{
     book::{Book, BookId, Format},
+    config::LibraryPathState,
     cover::CoverFile,
     jobs::{JobOutput, JobRequest, JobState},
     metadata::Metadata,
@@ -114,6 +115,8 @@ pub struct State {
     pub setup_error: Option<String>,
     pub library_loading: bool,
     pub setup_busy: bool,
+    pub setup_creating: bool,
+    pub setup_prompt: Option<SetupPrompt>,
     setup_native_path: Option<PathBuf>,
     library_generation: u64,
     library_saving: bool,
@@ -198,6 +201,35 @@ pub fn order_of<'a>(
         _ => facets,
     }
 }
+/// A folder on the setup screen that is not a ready library, and what may be done with it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SetupPrompt {
+    pub inspection: LibraryInspection,
+    /// The user confirmed creating a library in a folder that already has files.
+    pub confirmed: bool,
+}
+impl SetupPrompt {
+    /// Creation is never offered for a missing folder (a disconnected drive looks the same),
+    /// needs Calibre, and for a folder with files needs the separate confirmation.
+    pub fn can_create(&self) -> bool {
+        self.inspection.calibre_available
+            && match self.inspection.state {
+                LibraryPathState::NotLibraryEmpty => true,
+                LibraryPathState::NotLibraryNotEmpty => self.confirmed,
+                _ => false,
+            }
+    }
+}
+/// Calibre install command (or download page) for the current OS.
+pub fn calibre_install_hint() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "winget install --id calibre.calibre"
+    } else if cfg!(target_os = "macos") {
+        "brew install --cask calibre"
+    } else {
+        "https://calibre-ebook.com/download"
+    }
+}
 #[derive(Default, Debug, PartialEq, Eq)]
 pub enum ScanStatus {
     #[default]
@@ -258,6 +290,21 @@ pub enum Message {
         result: Result<Option<PathBuf>, String>,
     },
     ContinueSetup,
+    LibraryInspected {
+        generation: u64,
+        result: Result<LibraryInspection, String>,
+    },
+    SavedLibraryInspected {
+        generation: u64,
+        result: Result<Option<LibraryInspection>, String>,
+    },
+    SetupConfirmFiles(bool),
+    SetupCreateLibrary,
+    SetupChooseAnother,
+    LibraryCreated {
+        generation: u64,
+        result: Result<PathBuf, String>,
+    },
     LibraryValidated {
         generation: u64,
         result: Result<PathBuf, String>,
@@ -889,13 +936,32 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                 Err(error) => {
                     state.screen = Screen::Setup;
                     state.setup_error = Some(error);
+                    // Explain what is wrong with the saved folder with the same cards.
+                    return Task::perform(services.inspect_saved_library(), move |result| {
+                        Message::SavedLibraryInspected { generation, result }
+                    });
                 }
+            }
+        }
+        Message::SavedLibraryInspected { generation, result }
+            if generation == state.library_generation
+                && !state.closing
+                && state.screen == Screen::Setup
+                && state.setup_path.is_empty() =>
+        {
+            if let Ok(Some(inspection)) = result
+                && inspection.state != LibraryPathState::Ready
+            {
+                state.setup_path = inspection.path.display().to_string();
+                state.setup_native_path = Some(inspection.path.clone());
+                state.setup_prompt = prompt_for(inspection);
             }
         }
         Message::SetupPathChanged(path) if !state.setup_busy && !state.library_loading => {
             state.setup_path = path;
             state.setup_native_path = None;
             state.setup_error = None;
+            state.setup_prompt = None;
         }
         Message::SetupBrowse if !state.setup_busy && !state.library_loading => {
             state.setup_busy = true;
@@ -913,6 +979,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                     state.setup_path = path.display().to_string();
                     state.setup_native_path = Some(path);
                     state.setup_error = None;
+                    state.setup_prompt = None;
                 }
                 Ok(None) => {}
                 Err(error) => state.setup_error = Some(error),
@@ -925,21 +992,96 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         {
             state.setup_busy = true;
             state.setup_error = None;
+            state.setup_prompt = None;
             let generation = next_library_generation(state);
-            if let Some(path) = state.setup_native_path.clone() {
-                return update(
-                    state,
-                    Message::LibraryValidated {
-                        generation,
-                        result: Ok(path),
-                    },
-                    services,
-                );
-            }
             return Task::perform(
-                services.validate_library(state.setup_path.clone()),
-                move |result| Message::LibraryValidated { generation, result },
+                services.inspect_library(state.setup_path.clone(), state.setup_native_path.clone()),
+                move |result| Message::LibraryInspected { generation, result },
             );
+        }
+        Message::LibraryInspected { generation, result }
+            if generation == state.library_generation && !state.closing =>
+        {
+            match result {
+                Ok(inspection) if inspection.state == LibraryPathState::Ready => {
+                    let path = inspection.path;
+                    return update(
+                        state,
+                        Message::LibraryValidated {
+                            generation,
+                            result: Ok(path),
+                        },
+                        services,
+                    );
+                }
+                Ok(inspection) => {
+                    state.setup_busy = false;
+                    if inspection.state == LibraryPathState::NotDirectory {
+                        state.setup_error =
+                            Some("This path is a file, not a folder. Choose a folder.".into());
+                    } else {
+                        state.setup_native_path = Some(inspection.path.clone());
+                        state.setup_prompt = prompt_for(inspection);
+                    }
+                }
+                Err(error) => {
+                    state.setup_busy = false;
+                    state.setup_error = Some(error);
+                }
+            }
+        }
+        Message::SetupConfirmFiles(confirmed) if !state.setup_busy => {
+            if let Some(prompt) = &mut state.setup_prompt {
+                prompt.confirmed = confirmed;
+            }
+        }
+        Message::SetupChooseAnother if !state.setup_busy && !state.library_loading => {
+            state.setup_path.clear();
+            state.setup_native_path = None;
+            state.setup_error = None;
+            state.setup_prompt = None;
+        }
+        Message::SetupCreateLibrary
+            if !state.setup_busy
+                && !state.library_loading
+                && !state.closing
+                && state
+                    .setup_prompt
+                    .as_ref()
+                    .is_some_and(SetupPrompt::can_create) =>
+        {
+            let prompt = state.setup_prompt.as_ref().expect("checked above");
+            let path = prompt.inspection.path.clone();
+            let among_files = prompt.inspection.state == LibraryPathState::NotLibraryNotEmpty;
+            state.setup_busy = true;
+            state.setup_creating = true;
+            state.setup_error = None;
+            let generation = next_library_generation(state);
+            return Task::perform(services.create_library(path, among_files), move |result| {
+                Message::LibraryCreated { generation, result }
+            });
+        }
+        Message::LibraryCreated { generation, result }
+            if generation == state.library_generation && !state.closing =>
+        {
+            state.setup_creating = false;
+            match result {
+                Ok(path) => {
+                    state.setup_prompt = None;
+                    return update(
+                        state,
+                        Message::LibraryValidated {
+                            generation,
+                            result: Ok(path),
+                        },
+                        services,
+                    );
+                }
+                Err(error) => {
+                    state.setup_busy = false;
+                    state.setup_error = Some(error);
+                }
+            }
         }
         Message::LibraryValidated { generation, result }
             if generation == state.library_generation && !state.closing =>
@@ -990,6 +1132,8 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                 .unwrap_or_default();
             state.setup_native_path = state.library.clone();
             state.setup_error = None;
+            state.setup_prompt = None;
+            state.setup_creating = false;
             state.screen = Screen::Setup;
         }
         Message::Rescan if state.library.is_some() && !state.closing => start_scan(state, services),
@@ -998,6 +1142,12 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         | Message::SetupBrowse
         | Message::SetupFolderPicked { .. }
         | Message::ContinueSetup
+        | Message::LibraryInspected { .. }
+        | Message::SavedLibraryInspected { .. }
+        | Message::SetupConfirmFiles(_)
+        | Message::SetupCreateLibrary
+        | Message::SetupChooseAnother
+        | Message::LibraryCreated { .. }
         | Message::LibraryValidated { .. }
         | Message::LibrarySaved { .. }
         | Message::ChangeLibrary
@@ -1376,6 +1526,13 @@ fn cancel_scan(state: &mut State, services: &dyn Services) {
         services.cancel(id);
     }
 }
+/// `NotDirectory` has no card: the message is enough and there is nothing to create.
+fn prompt_for(inspection: LibraryInspection) -> Option<SetupPrompt> {
+    (inspection.state != LibraryPathState::NotDirectory).then_some(SetupPrompt {
+        inspection,
+        confirmed: false,
+    })
+}
 fn settings_library_error(state: &mut State, error: String) {
     state.setup_busy = false;
     state.settings_library_change = false;
@@ -1396,6 +1553,8 @@ fn activate_library(state: &mut State, path: PathBuf, services: &dyn Services) {
     }
     state.library = Some(path);
     state.setup_error = None;
+    state.setup_prompt = None;
+    state.setup_creating = false;
     state.screen = Screen::Home {
         filter: Filter::All,
     };
@@ -1947,6 +2106,103 @@ pub fn subscription(state: &State) -> Subscription<Message> {
     ])
 }
 
+/// The card under the path field for a folder that is not a ready library (design gap G1).
+fn setup_prompt_card(state: &State) -> Element<'_, Message> {
+    let Some(prompt) = &state.setup_prompt else {
+        return column![].into();
+    };
+    let busy = state.setup_busy;
+    let inspection = &prompt.inspection;
+    let path = inspection.path.display().to_string();
+    let small = theme::font(state, 13.0);
+    let other = button("Choose another…")
+        .style(theme::outline)
+        .padding(8)
+        .on_press_maybe((!busy).then_some(Message::SetupChooseAnother));
+    let retry = |label: &'static str| {
+        button(label)
+            .style(theme::outline)
+            .padding(8)
+            .on_press_maybe((!busy).then_some(Message::ContinueSetup))
+    };
+    let create = button("Create library")
+        .style(theme::primary)
+        .padding(8)
+        .on_press_maybe((!busy && prompt.can_create()).then_some(Message::SetupCreateLibrary));
+    let mut body = column![].spacing(8);
+    let actions;
+    if inspection.state == LibraryPathState::Missing {
+        body = body
+            .push(text("Folder unavailable").size(theme::font(state, 16.0)))
+            .push(
+                text(format!(
+                    "{path} cannot be reached. If it is on an external or network drive, \
+                     reconnect it and try again. Nothing will be created."
+                ))
+                .size(small),
+            );
+        actions = row![retry("Try again"), other];
+    } else if !inspection.calibre_available {
+        body = body
+            .push(text("Calibre is needed to create a library").size(theme::font(state, 16.0)))
+            .push(
+                text(
+                    "There is no Calibre library in this folder, and FerroLibri creates one \
+                     with Calibre's calibredb tool, which was not found. Install Calibre, \
+                     then check again:",
+                )
+                .size(small),
+            )
+            .push(
+                container(
+                    text(calibre_install_hint())
+                        .size(small)
+                        .font(iced::Font::MONOSPACE),
+                )
+                .padding(6)
+                .style(theme::card),
+            );
+        actions = row![retry("Check again"), other];
+    } else if inspection.state == LibraryPathState::NotLibraryEmpty {
+        body = body
+            .push(text("No Calibre library here").size(theme::font(state, 16.0)))
+            .push(
+                text(format!(
+                    "{path} is empty. Create an empty Calibre library in it?"
+                ))
+                .size(small),
+            );
+        actions = row![create, other];
+    } else {
+        body = body
+            .push(
+                text("This folder has files but no Calibre library").size(theme::font(state, 16.0)),
+            )
+            .push(text("First files in the folder:").size(small));
+        for name in &inspection.files {
+            body = body.push(text(format!("• {name}")).size(small));
+        }
+        body = body
+            .push(
+                text(
+                    "Calibre would add its own files (metadata.db and book folders) next to \
+                     these. Existing files are not changed.",
+                )
+                .size(small),
+            )
+            .push(
+                iced::widget::checkbox(prompt.confirmed)
+                    .label("Create a library in this folder anyway")
+                    .on_toggle_maybe((!busy).then_some(Message::SetupConfirmFiles)),
+            );
+        actions = row![create, other];
+    }
+    container(body.push(actions.spacing(8)))
+        .padding(12)
+        .width(Fill)
+        .style(theme::card)
+        .into()
+}
 pub fn view(state: &State) -> Element<'_, Message> {
     let content: Element<'_, Message> = if state.library_loading {
         container(text("Loading library setting…"))
@@ -1973,13 +2229,21 @@ pub fn view(state: &State) -> Element<'_, Message> {
                     .on_press_maybe((!busy).then_some(Message::SetupBrowse))
             ]
             .spacing(8),
-            text(state.setup_error.as_deref().unwrap_or(if busy {
-                "Checking and saving library…"
-            } else {
-                ""
-            }))
+            text(
+                state
+                    .setup_error
+                    .as_deref()
+                    .unwrap_or(if state.setup_creating {
+                        "Creating the library…"
+                    } else if busy {
+                        "Checking and saving library…"
+                    } else {
+                        ""
+                    })
+            )
             .size(theme::font(state, 13.0))
             .color(theme::DARK.warning),
+            setup_prompt_card(state),
             row![
                 iced::widget::Space::new().width(Fill),
                 button("Continue")
@@ -3727,6 +3991,232 @@ mod tests {
         assert_eq!(state.scan_status, ScanStatus::Running);
         assert!(
             matches!(&fake.requests.lock().unwrap()[0], JobRequest::Scan { library } if library == &PathBuf::from("library"))
+        );
+    }
+    fn inspected(
+        path: &str,
+        state: LibraryPathState,
+        calibre_available: bool,
+    ) -> LibraryInspection {
+        LibraryInspection {
+            path: path.into(),
+            state,
+            files: Vec::new(),
+            calibre_available,
+        }
+    }
+    #[test]
+    fn a_lost_saved_library_is_explained_with_the_same_states() {
+        for library_state in [
+            LibraryPathState::Missing,
+            LibraryPathState::NotLibraryEmpty,
+            LibraryPathState::NotLibraryNotEmpty,
+        ] {
+            let mut state = State::default();
+            let fake = Fake::default();
+            library_reply(&mut state, &fake, Err("Saved library is gone".into()));
+            let generation = state.library_generation;
+            step(
+                &mut state,
+                Message::SavedLibraryInspected {
+                    generation,
+                    result: Ok(Some(inspected("D:/lib", library_state, true))),
+                },
+                &fake,
+            );
+            assert_eq!(state.screen, Screen::Setup);
+            assert_eq!(state.setup_error.as_deref(), Some("Saved library is gone"));
+            assert_eq!(
+                state.setup_path,
+                PathBuf::from("D:/lib").display().to_string()
+            );
+            assert_eq!(
+                state.setup_prompt.as_ref().unwrap().inspection.state,
+                library_state
+            );
+            assert!(!state.setup_prompt.as_ref().unwrap().confirmed);
+        }
+        // Nothing to show for a stale reply, a ready folder, an unreadable config or typed input.
+        let ignored = [
+            (
+                u64::MAX,
+                Ok(Some(inspected("D:/lib", LibraryPathState::Missing, true))),
+            ),
+            (
+                0,
+                Ok(Some(inspected("D:/lib", LibraryPathState::Ready, true))),
+            ),
+            (0, Ok(None)),
+            (0, Err("boom".to_string())),
+        ];
+        for (generation, result) in ignored {
+            let mut state = State::default();
+            let fake = Fake::default();
+            library_reply(&mut state, &fake, Err("gone".into()));
+            let generation = if generation == 0 {
+                state.library_generation
+            } else {
+                generation
+            };
+            step(
+                &mut state,
+                Message::SavedLibraryInspected { generation, result },
+                &fake,
+            );
+            assert!(state.setup_prompt.is_none() && state.setup_path.is_empty());
+        }
+        let mut state = State::default();
+        let fake = Fake::default();
+        library_reply(&mut state, &fake, Err("gone".into()));
+        step(&mut state, Message::SetupPathChanged("typed".into()), &fake);
+        let generation = state.library_generation;
+        step(
+            &mut state,
+            Message::SavedLibraryInspected {
+                generation,
+                result: Ok(Some(inspected("D:/lib", LibraryPathState::Missing, true))),
+            },
+            &fake,
+        );
+        assert_eq!(state.setup_path, "typed");
+        assert!(state.setup_prompt.is_none());
+    }
+    #[test]
+    fn creating_a_library_saves_it_and_a_failure_keeps_the_card_and_confirmation() {
+        let mut state = State::default();
+        let fake = Fake::default();
+        step(
+            &mut state,
+            Message::SetupPathChanged("D:/docs".into()),
+            &fake,
+        );
+        step(&mut state, Message::ContinueSetup, &fake);
+        let generation = state.library_generation;
+        step(
+            &mut state,
+            Message::LibraryInspected {
+                generation,
+                result: Ok(inspected(
+                    "D:/docs",
+                    LibraryPathState::NotLibraryNotEmpty,
+                    true,
+                )),
+            },
+            &fake,
+        );
+        assert!(!state.setup_busy);
+        // Files in the folder: creation waits for the confirmation.
+        step(&mut state, Message::SetupCreateLibrary, &fake);
+        assert!(!state.setup_busy && !state.setup_creating);
+        step(&mut state, Message::SetupConfirmFiles(true), &fake);
+        step(&mut state, Message::SetupCreateLibrary, &fake);
+        assert!(state.setup_busy && state.setup_creating);
+        let generation = state.library_generation;
+        step(
+            &mut state,
+            Message::LibraryCreated {
+                generation: generation - 1,
+                result: Ok("stale".into()),
+            },
+            &fake,
+        );
+        assert!(state.setup_creating && fake.library_saves.lock().unwrap().is_empty());
+        step(
+            &mut state,
+            Message::LibraryCreated {
+                generation,
+                result: Err("Calibre is running".into()),
+            },
+            &fake,
+        );
+        assert!(!state.setup_busy && !state.setup_creating);
+        assert_eq!(state.setup_error.as_deref(), Some("Calibre is running"));
+        assert!(state.setup_prompt.as_ref().unwrap().confirmed);
+        step(&mut state, Message::SetupCreateLibrary, &fake);
+        let generation = state.library_generation;
+        step(
+            &mut state,
+            Message::LibraryCreated {
+                generation,
+                result: Ok("D:/docs".into()),
+            },
+            &fake,
+        );
+        assert!(!state.setup_creating && state.setup_prompt.is_none());
+        assert_eq!(
+            *fake.library_saves.lock().unwrap(),
+            [PathBuf::from("D:/docs")]
+        );
+    }
+    #[test]
+    fn inspection_replies_route_each_state_and_stale_ones_are_ignored() {
+        let fake = Fake::default();
+        for (library_state, card, error) in [
+            (LibraryPathState::Missing, true, false),
+            (LibraryPathState::NotLibraryEmpty, true, false),
+            (LibraryPathState::NotDirectory, false, true),
+        ] {
+            let mut state = State::default();
+            step(&mut state, Message::SetupPathChanged("x".into()), &fake);
+            step(&mut state, Message::ContinueSetup, &fake);
+            assert!(state.setup_busy);
+            let generation = state.library_generation;
+            step(
+                &mut state,
+                Message::LibraryInspected {
+                    generation: generation + 1,
+                    result: Ok(inspected("x", library_state, true)),
+                },
+                &fake,
+            );
+            assert!(
+                state.setup_busy && state.setup_prompt.is_none(),
+                "stale reply"
+            );
+            step(
+                &mut state,
+                Message::LibraryInspected {
+                    generation,
+                    result: Ok(inspected("x", library_state, true)),
+                },
+                &fake,
+            );
+            assert!(!state.setup_busy);
+            assert_eq!(state.setup_prompt.is_some(), card);
+            assert_eq!(state.setup_error.is_some(), error);
+            assert!(fake.library_saves.lock().unwrap().is_empty());
+        }
+        let mut state = State::default();
+        step(&mut state, Message::SetupPathChanged("x".into()), &fake);
+        step(&mut state, Message::ContinueSetup, &fake);
+        let generation = state.library_generation;
+        step(
+            &mut state,
+            Message::LibraryInspected {
+                generation,
+                result: Err("Could not access the library folder".into()),
+            },
+            &fake,
+        );
+        assert!(!state.setup_busy && state.setup_prompt.is_none());
+        assert_eq!(
+            state.setup_error.as_deref(),
+            Some("Could not access the library folder")
+        );
+        // A ready library goes on to be saved.
+        step(&mut state, Message::ContinueSetup, &fake);
+        let generation = state.library_generation;
+        step(
+            &mut state,
+            Message::LibraryInspected {
+                generation,
+                result: Ok(inspected("ready", LibraryPathState::Ready, false)),
+            },
+            &fake,
+        );
+        assert_eq!(
+            *fake.library_saves.lock().unwrap(),
+            [PathBuf::from("ready")]
         );
     }
     #[test]

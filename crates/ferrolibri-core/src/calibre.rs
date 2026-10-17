@@ -157,11 +157,33 @@ impl CalibreCli {
         self.create_library_with(&mut SystemRunner, dir, cancel)
     }
 
+    /// Like [`create_library`](Self::create_library) for a folder that already holds
+    /// other files (checked with Calibre 8.16.2: they are left untouched and the
+    /// library files are created next to them). Callers must get the user's explicit
+    /// confirmation first. A folder that already has `metadata.db` is refused.
+    pub fn create_library_among_files(
+        &self,
+        dir: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        self.create_library_inner(&mut SystemRunner, dir, cancel, true)
+    }
+
     fn create_library_with(
         &self,
         runner: &mut impl ProcessRunner,
         dir: &Path,
         cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        self.create_library_inner(runner, dir, cancel, false)
+    }
+
+    fn create_library_inner(
+        &self,
+        runner: &mut impl ProcessRunner,
+        dir: &Path,
+        cancel: &CancellationToken,
+        allow_existing_files: bool,
     ) -> Result<(), Error> {
         const OPERATION: &str = "create Calibre library";
         let dir = std::path::absolute(dir).map_err(|e| Error::io(OPERATION, dir, e))?;
@@ -169,13 +191,22 @@ impl CalibreCli {
         if !metadata.is_dir() {
             return Err(invalid_input("create Calibre library: not a folder", &dir));
         }
-        let mut entries = std::fs::read_dir(&dir).map_err(|e| Error::io(OPERATION, &dir, e))?;
-        if let Some(entry) = entries.next() {
-            entry.map_err(|e| Error::io(OPERATION, &dir, e))?;
-            return Err(invalid_input(
-                "create Calibre library: folder must be empty",
-                &dir,
-            ));
+        if allow_existing_files {
+            if config::is_calibre_library(&dir)? {
+                return Err(invalid_input(
+                    "create Calibre library: folder already holds a library",
+                    &dir,
+                ));
+            }
+        } else {
+            let mut entries = std::fs::read_dir(&dir).map_err(|e| Error::io(OPERATION, &dir, e))?;
+            if let Some(entry) = entries.next() {
+                entry.map_err(|e| Error::io(OPERATION, &dir, e))?;
+                return Err(invalid_input(
+                    "create Calibre library: folder must be empty",
+                    &dir,
+                ));
+            }
         }
         check_library_path(&dir)?;
         let mut command = self.command();
@@ -628,6 +659,36 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error.kind, ErrorKind::InvalidInput), "{error}");
         assert!(runner.calls.is_empty());
+    }
+
+    #[test]
+    fn create_library_among_files_keeps_files_and_refuses_existing_libraries() {
+        let fixture = Fixture::new();
+        let documents = fixture.root.join("documents");
+        std::fs::create_dir(&documents).unwrap();
+        std::fs::write(documents.join("notes.txt"), b"keep").unwrap();
+        let target = documents.clone();
+        let mut runner = FakeRunner::new(vec![output(true, "", "")]);
+        runner.hook = Some(Box::new(move |_| {
+            std::fs::write(target.join("metadata.db"), b"db").unwrap();
+        }));
+        let cancel = CancellationToken::default();
+        cli()
+            .create_library_inner(&mut runner, &documents, &cancel, true)
+            .unwrap();
+        assert_eq!(runner.calls.len(), 1);
+        assert_eq!(std::fs::read(documents.join("notes.txt")).unwrap(), b"keep");
+        // The folder is a library now: a second creation is refused without running.
+        let error = cli()
+            .create_library_inner(&mut runner, &documents, &cancel, true)
+            .unwrap_err();
+        assert!(matches!(error.kind, ErrorKind::InvalidInput), "{error}");
+        assert_eq!(runner.calls.len(), 1);
+        let file = plain_file(&fixture, "file.txt");
+        let error = cli()
+            .create_library_inner(&mut runner, &file, &cancel, true)
+            .unwrap_err();
+        assert!(matches!(error.kind, ErrorKind::InvalidInput), "{error}");
     }
 
     #[test]
