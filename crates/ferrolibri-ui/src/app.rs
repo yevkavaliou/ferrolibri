@@ -857,6 +857,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                             state: JobState::Waiting,
                             stage: None,
                             progress: None,
+                            received: None,
                             error: None,
                         },
                     );
@@ -1914,6 +1915,17 @@ fn poll(state: &mut State, services: &dyn Services) {
                     };
                     state.job_messages.insert(id, message.clone());
                     crate::widgets::toasts::push(state, message, error);
+                }
+                // A book was added to the library: scan again so that it shows up (the add job
+                // itself only writes through `calibredb`). A duplicate changed nothing.
+                if let Ok(JobOutput::Added(book)) = result.as_ref()
+                    && matches!(
+                        book.outcome,
+                        ferrolibri_core::calibre::AddOutcome::Added { .. }
+                    )
+                    && state.library.as_deref() == Some(book.library.as_path())
+                {
+                    start_scan(state, services);
                 }
             }
             if state.active_scan == Some(id) {
@@ -3468,6 +3480,7 @@ mod tests {
                     },
                     stage: Some(ferrolibri_core::jobs::Stage::Copying),
                     progress: Some((42, 100)),
+                    received: None,
                     error: (n == 3).then(|| "Destination already exists: book.epub".into()),
                 },
                 result: Some(Arc::new(if n == 2 {
@@ -3754,6 +3767,7 @@ mod tests {
                 kind: JobKind::Metadata,
                 state: JobState::Succeeded,
                 progress: None,
+                received: None,
                 stage: None,
                 error: None,
             },
@@ -3949,6 +3963,7 @@ mod tests {
                 kind: JobKind::Scan,
                 state,
                 progress: None,
+                received: None,
                 stage: None,
                 error: result.as_ref().err().cloned(),
             },
@@ -4822,5 +4837,85 @@ mod tests {
         state.screen = Screen::Settings;
         press_with(&mut state, &fake, "i", Code::KeyI, Modifiers::CTRL);
         assert!(!state.visible_settings().details_visible);
+    }
+
+    fn download_reply(
+        id: u64,
+        outcome: ferrolibri_core::calibre::AddOutcome,
+        library: &str,
+    ) -> JobUpdate {
+        JobUpdate {
+            view: JobView {
+                id: JobId(id),
+                title: "Download".into(),
+                kind: JobKind::Download,
+                state: JobState::Succeeded,
+                progress: None,
+                received: Some(10),
+                stage: Some(ferrolibri_core::jobs::Stage::Adding),
+                error: None,
+            },
+            result: Some(Arc::new(Ok(JobOutput::Added(
+                ferrolibri_core::jobs::AddedBook {
+                    library: library.into(),
+                    title: "Book".into(),
+                    outcome,
+                },
+            )))),
+        }
+    }
+    #[test]
+    fn a_downloaded_book_triggers_a_rescan_of_its_library_unless_nothing_changed() {
+        use ferrolibri_core::calibre::AddOutcome;
+        let mut state = State::default();
+        let fake = Fake::default();
+        library_reply(&mut state, &fake, Ok(Some("library".into())));
+        let first_scan = state.active_scan.unwrap();
+        fake.updates.lock().unwrap().push(scan_reply(
+            first_scan,
+            Ok(ferrolibri_core::scanner::ScanReport {
+                books: vec![],
+                warnings: vec![],
+            }),
+            JobState::Succeeded,
+        ));
+        step(&mut state, Message::Tick, &fake);
+        assert!(state.active_scan.is_none());
+        let scans = |fake: &Fake| {
+            fake.requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| matches!(r, JobRequest::Scan { .. }))
+                .count()
+        };
+        assert_eq!(scans(&fake), 1);
+
+        // Already in the library, or added to some other library: no scan.
+        fake.updates
+            .lock()
+            .unwrap()
+            .push(download_reply(50, AddOutcome::AlreadyExists, "library"));
+        fake.updates.lock().unwrap().push(download_reply(
+            51,
+            AddOutcome::Added { id: 1 },
+            "another",
+        ));
+        step(&mut state, Message::Tick, &fake);
+        assert_eq!(scans(&fake), 1);
+        assert!(state.active_scan.is_none());
+
+        // Added: the library is scanned again, once.
+        fake.updates.lock().unwrap().push(download_reply(
+            52,
+            AddOutcome::Added { id: 2 },
+            "library",
+        ));
+        step(&mut state, Message::Tick, &fake);
+        assert_eq!(scans(&fake), 2);
+        assert!(state.active_scan.is_some());
+        assert_eq!(state.scan_status, ScanStatus::Running);
+        step(&mut state, Message::Tick, &fake);
+        assert_eq!(scans(&fake), 2);
     }
 }

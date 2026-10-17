@@ -19,6 +19,8 @@ pub enum JobKind {
     Backends,
     Convert,
     Send,
+    /// A book downloaded for a plugin and added to the library (`JobRequest::External`).
+    Download,
 }
 impl JobKind {
     fn of(request: &JobRequest) -> Self {
@@ -28,6 +30,7 @@ impl JobKind {
             JobRequest::Backends => Self::Backends,
             JobRequest::Send { .. } => Self::Send,
             JobRequest::Convert { .. } | JobRequest::ConvertFiles { .. } => Self::Convert,
+            JobRequest::External(_) => Self::Download,
         }
     }
 }
@@ -37,7 +40,10 @@ pub struct JobView {
     pub title: String,
     pub kind: JobKind,
     pub state: JobState,
+    /// `(done, total)` when the total is known (copying; a download whose size was announced).
     pub progress: Option<(u64, u64)>,
+    /// Bytes of a download received so far, whether or not the total is known.
+    pub received: Option<u64>,
     pub stage: Option<Stage>,
     pub error: Option<String>,
 }
@@ -102,6 +108,17 @@ pub fn error_message(error: &ferrolibri_core::Error) -> String {
             error_message(cause),
             partial_path.display()
         ),
+        ErrorKind::BookNotAdded { cause, kept } => match kept {
+            Some(path) => format!(
+                "Could not add the book to the library. {} The downloaded file was saved to {}",
+                error_message(cause),
+                path.display()
+            ),
+            None => format!(
+                "Could not add the book to the library. {}",
+                error_message(cause)
+            ),
+        },
         _ => error.to_string(),
     }
 }
@@ -178,6 +195,7 @@ impl Coordinator {
                 kind: JobKind::of(&request),
                 state: JobState::Waiting,
                 progress: None,
+                received: None,
                 stage: None,
                 error: None,
             },
@@ -232,7 +250,8 @@ impl Coordinator {
                         SubmitError::InvalidDestination(reason) => {
                             format!("Invalid destination: {reason}")
                         }
-                        _ => unreachable!(),
+                        SubmitError::Unavailable(reason) => reason,
+                        SubmitError::Full | SubmitError::Conflict => unreachable!(),
                     };
                     self.finish(job.id, JobState::Failed, Err(text));
                 }
@@ -273,6 +292,13 @@ impl Coordinator {
                         completed, total, ..
                     } if view.kind == JobKind::Send => view.progress = Some((completed, total)),
                     JobEvent::CopyProgress { .. } => {}
+                    JobEvent::DownloadProgress {
+                        completed, total, ..
+                    } if view.kind == JobKind::Download => {
+                        view.received = Some(completed);
+                        view.progress = total.map(|total| (completed, total));
+                    }
+                    JobEvent::DownloadProgress { .. } => {}
                 }
             }
             if let Some(result) = result {
@@ -729,6 +755,88 @@ mod tests {
                 kind: ErrorKind::Cancelled
             }),
             "Cancelled"
+        );
+    }
+    fn download_request() -> JobRequest {
+        JobRequest::External(Arc::new(Stub))
+    }
+    #[derive(Debug)]
+    struct Stub;
+    impl ferrolibri_core::jobs::ExternalJob for Stub {
+        fn title(&self) -> String {
+            "Download “Book”".into()
+        }
+        fn run(
+            &self,
+            _: &ferrolibri_core::jobs::Context,
+        ) -> Result<JobOutput, ferrolibri_core::Error> {
+            unreachable!("the fake executor does not run jobs")
+        }
+    }
+    #[test]
+    fn an_external_job_is_a_download_with_bytes_and_an_optional_total() {
+        let (mut jobs, script) = fake(vec![None]);
+        let id = jobs.enqueue("Download “Book”".into(), download_request(), None);
+        assert_eq!(jobs.view(id).unwrap().kind, JobKind::Download);
+        {
+            let handle = script.lock().unwrap().handles[0].clone();
+            let mut handle = handle.lock().unwrap();
+            handle.events.push(JobEvent::Stage {
+                id: ferrolibri_core::jobs::JobId(1),
+                stage: Stage::Downloading,
+            });
+            handle.events.push(JobEvent::DownloadProgress {
+                id: ferrolibri_core::jobs::JobId(1),
+                completed: 500,
+                total: None,
+            });
+        }
+        jobs.poll();
+        let view = jobs.view(id).unwrap();
+        assert_eq!(view.stage, Some(Stage::Downloading));
+        assert_eq!((view.received, view.progress), (Some(500), None));
+        {
+            let handle = script.lock().unwrap().handles[0].clone();
+            handle
+                .lock()
+                .unwrap()
+                .events
+                .push(JobEvent::DownloadProgress {
+                    id: ferrolibri_core::jobs::JobId(1),
+                    completed: 800,
+                    total: Some(1000),
+                });
+        }
+        jobs.poll();
+        let view = jobs.view(id).unwrap();
+        assert_eq!(
+            (view.received, view.progress),
+            (Some(800), Some((800, 1000)))
+        );
+    }
+    #[test]
+    fn a_refused_external_job_fails_with_the_reason_and_a_kept_file_is_reported() {
+        let (mut jobs, _script) = fake(vec![Some(SubmitError::Unavailable(
+            "Calibre is needed to add books".into(),
+        ))]);
+        let id = jobs.enqueue("Download".into(), download_request(), None);
+        assert_eq!(jobs.view(id).unwrap().state, JobState::Failed);
+        assert_eq!(
+            jobs.view(id).unwrap().error.as_deref(),
+            Some("Calibre is needed to add books")
+        );
+        let kept = ferrolibri_core::Error {
+            operation: "download book",
+            path: None,
+            kind: ErrorKind::BookNotAdded {
+                cause: Box::new(ferrolibri_core::Error::unavailable("add book", None)),
+                kept: Some("export/Book.epub".into()),
+            },
+        };
+        let message = error_message(&kept);
+        assert!(
+            message.contains("Could not add the book") && message.contains("Book.epub"),
+            "{message}"
         );
     }
 }

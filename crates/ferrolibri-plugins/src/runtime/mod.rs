@@ -22,7 +22,7 @@ use std::{
 use ferrolibri_core::{Error, ErrorKind, converter::CancellationToken};
 use serde_json::Value;
 
-use crate::{Http, Manifest, SettingValue, limits, plugin_error};
+use crate::{AllowList, AllowListError, Http, Manifest, SettingValue, limits, plugin_error};
 use worker::{Failure, Job};
 
 /// A plugin ready to run: its manifest, its script and what the user stored in its settings.
@@ -35,6 +35,19 @@ pub struct LoadedPlugin {
     /// `network = true` open the network, and only what is stored here counts: a `default` of the
     /// manifest is passed to the plugin but is not an address the user entered (D4).
     pub settings: BTreeMap<String, SettingValue>,
+}
+
+impl LoadedPlugin {
+    /// The hosts this plugin's network access reaches (D4): the domains of its manifest plus the
+    /// `url` settings with `network = true` that the user filled in. The same list serves the
+    /// plugin's own requests and the download of the file it pointed to.
+    pub fn allow_list(&self) -> Result<AllowList, AllowListError> {
+        let entered = worker::entered_addresses(self);
+        AllowList::for_manifest(
+            &self.manifest,
+            &entered.iter().map(String::as_str).collect::<Vec<_>>(),
+        )
+    }
 }
 
 /// The functions a plugin can export.
@@ -142,6 +155,12 @@ impl PluginRuntime {
             sink: default_sink(),
             max_call_time: None,
         }
+    }
+
+    /// The HTTP client the plugins use; the app's own downloads must share it, so that the
+    /// per-host queues and pauses count every request.
+    pub fn http(&self) -> &Http {
+        &self.http
     }
 
     /// Sends plugin logs to `sink` instead of the `log` facade.

@@ -72,6 +72,15 @@ pub trait Services: Send + Sync {
         Box::pin(async { Ok(None) })
     }
     fn enqueue(&self, title: String, request: JobRequest) -> JobId;
+    /// Queues a job defined outside the core (a download for a plugin). The job's title is
+    /// the title in the list. If it is refused (for example `calibredb` is missing) the job
+    /// fails at once with the reason as its message.
+    fn enqueue_external(
+        &self,
+        job: std::sync::Arc<dyn ferrolibri_core::jobs::ExternalJob>,
+    ) -> JobId {
+        self.enqueue(job.title(), JobRequest::External(job))
+    }
     fn poll(&self) -> Vec<JobUpdate>;
     fn cancel(&self, id: JobId);
     fn clear_finished(&self);

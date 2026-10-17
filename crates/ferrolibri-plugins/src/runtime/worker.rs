@@ -202,7 +202,7 @@ fn call<'js>(
 
 /// The addresses the user typed into `url` settings that open the network (D4). A default of the
 /// manifest is not an entered address: only what the settings form stored counts.
-fn entered_addresses(plugin: &LoadedPlugin) -> Vec<String> {
+pub(super) fn entered_addresses(plugin: &LoadedPlugin) -> Vec<String> {
     plugin
         .manifest
         .settings

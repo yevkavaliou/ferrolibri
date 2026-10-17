@@ -85,7 +85,7 @@ fn main() -> iced::Result {
         for (n,title) in [(1,"Математика. Утрата определённости"),(2,"Harry Potter i kamień filozoficzny"),(3,"Cyberiada")] {
             state.selection.selected.insert(ferrolibri_core::book::BookId::Calibre(n));
             state.send_devices.insert(JobId(n),reader.id.clone());
-            state.jobs.insert(JobId(n),JobView {id:JobId(n),title:title.into(),kind:JobKind::Send,state:if n==1 {JobState::Running} else {JobState::Waiting},stage:if n==1 {Some(Stage::Preparing)} else {None},progress:None,error:None});
+            state.jobs.insert(JobId(n),JobView {id:JobId(n),title:title.into(),kind:JobKind::Send,state:if n==1 {JobState::Running} else {JobState::Waiting},stage:if n==1 {Some(Stage::Preparing)} else {None},progress:None,received:None,error:None});
         }
         (Probe {app:state,stage:0},delay())
     },move |p:&mut Probe,event| match event {

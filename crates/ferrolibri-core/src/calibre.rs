@@ -66,6 +66,30 @@ pub enum AddOutcome {
     AlreadyExists,
 }
 
+/// Something that can put a book file into a Calibre library: [`CalibreCli`], or a stand-in in
+/// tests of the code that downloads books.
+pub trait BookAdder: Send + Sync + std::fmt::Debug {
+    fn add_book(
+        &self,
+        library: &Path,
+        file: &Path,
+        metadata: &NewBookMetadata,
+        cancel: &CancellationToken,
+    ) -> Result<AddOutcome, Error>;
+}
+
+impl BookAdder for CalibreCli {
+    fn add_book(
+        &self,
+        library: &Path,
+        file: &Path,
+        metadata: &NewBookMetadata,
+        cancel: &CancellationToken,
+    ) -> Result<AddOutcome, Error> {
+        CalibreCli::add_book(self, library, file, metadata, cancel)
+    }
+}
+
 pub(crate) fn is_calibre_program(program: &str) -> bool {
     matches!(program, "calibredb" | "ebook-convert")
 }

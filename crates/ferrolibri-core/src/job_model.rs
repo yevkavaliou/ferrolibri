@@ -18,6 +18,10 @@ pub enum Stage {
     Converting,
     Preparing,
     Copying,
+    /// Fetching a book from the network (`ExternalJob`s).
+    Downloading,
+    /// `calibredb add` is running.
+    Adding,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,5 +38,11 @@ pub enum JobEvent {
         id: JobId,
         completed: u64,
         total: u64,
+    },
+    /// Bytes received so far; `total` is `None` when the server did not announce a size.
+    DownloadProgress {
+        id: JobId,
+        completed: u64,
+        total: Option<u64>,
     },
 }

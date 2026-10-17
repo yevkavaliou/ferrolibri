@@ -26,6 +26,12 @@ pub enum ErrorKind {
     },
     Cancelled,
     TimedOut,
+    /// A downloaded book could not be added to the library. `kept` is where the file was saved
+    /// for the user (an export folder), if one was set.
+    BookNotAdded {
+        cause: Box<Error>,
+        kept: Option<PathBuf>,
+    },
     ExternalProcess {
         program: &'static str,
         status: ExitStatus,
@@ -101,6 +107,13 @@ impl fmt::Display for Error {
                 ": {cause}; partial file may remain at {}: {cleanup_error}",
                 partial_path.display()
             ),
+            ErrorKind::BookNotAdded { cause, kept } => {
+                write!(f, ": {cause}")?;
+                match kept {
+                    Some(path) => write!(f, "; the downloaded file was kept at {}", path.display()),
+                    None => Ok(()),
+                }
+            }
             ErrorKind::Cancelled => write!(f, ": cancelled"),
             ErrorKind::TimedOut => write!(f, ": timed out"),
             ErrorKind::ExternalProcess {
@@ -123,7 +136,9 @@ impl std::error::Error for Error {
         match &self.kind {
             ErrorKind::Io(e) => Some(e),
             ErrorKind::InvalidData(e) => Some(e.as_ref()),
-            ErrorKind::PartialTransfer { cause, .. } => Some(cause.as_ref()),
+            ErrorKind::PartialTransfer { cause, .. } | ErrorKind::BookNotAdded { cause, .. } => {
+                Some(cause.as_ref())
+            }
             _ => None,
         }
     }

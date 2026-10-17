@@ -10,6 +10,7 @@ mod domain;
 mod download;
 mod host_error;
 pub mod http;
+mod job;
 pub mod limits;
 mod manifest;
 mod remote;
@@ -27,6 +28,7 @@ pub use http::{
     Access, AllowList, AllowListError, FetchResponse, HostError, Http, HttpConfig, HttpSession,
     Identity, NameResolver, ResponseHead, ResponseStream, SystemResolver, is_forbidden_ip,
 };
+pub use job::{DownloadAndAdd, MAX_NAME_CHARS, file_name};
 pub use manifest::{
     Compatibility, Limits, Manifest, ManifestError, Network, Reason, Setting, SettingKind,
     SettingValue,

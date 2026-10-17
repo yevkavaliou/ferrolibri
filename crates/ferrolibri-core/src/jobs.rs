@@ -2,6 +2,7 @@
 use crate::{
     Error, ErrorKind,
     book::Format,
+    calibre::AddOutcome,
     converter::{self, CancellationToken, ConversionResult},
     device::{self, Device, PreparationOptions},
     scanner::{self, ScanReport},
@@ -45,6 +46,43 @@ pub enum JobRequest {
         device: Device,
         options: PreparationOptions,
     },
+    /// A job defined outside the core (for example, downloading a book into the library).
+    /// The core only schedules it; see [`ExternalJob`].
+    External(Arc<dyn ExternalJob>),
+}
+
+/// The extension point of the executor: work the core runs but knows nothing about.
+///
+/// It gets the executor's queue, its reservations (two jobs that write to the same path never
+/// run together), its events, cancellation and shutdown. It must be `Send + Sync` because the
+/// request is cloned while it waits (`Arc`) and runs on a worker thread.
+pub trait ExternalJob: Send + Sync + std::fmt::Debug {
+    /// What the user sees in the job list.
+    fn title(&self) -> String;
+
+    /// Directories or files the job writes to. A job whose path is inside, or contains, a path
+    /// of an unfinished job is refused with [`SubmitError::Conflict`]. The paths must exist.
+    fn writes_to(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    /// Checked in [`JobExecutor::submit`] on the caller's thread, so it must not block: `Err`
+    /// refuses the job with [`SubmitError::Unavailable`] and this text.
+    fn admit(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Runs on a worker. Check `ctx` for cancellation between steps and pass its token to
+    /// anything that waits.
+    fn run(&self, ctx: &Context) -> Result<JobOutput, Error>;
+}
+
+/// A book that was handed to Calibre by an [`ExternalJob`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AddedBook {
+    pub library: PathBuf,
+    pub title: String,
+    pub outcome: AddOutcome,
 }
 
 #[derive(Debug)]
@@ -54,6 +92,9 @@ pub enum JobOutput {
     Scan(ScanReport),
     Conversion(ConversionResult),
     Sent(PathBuf),
+    /// The book is in the library (`Added`) or was already there (`AlreadyExists`, not an
+    /// error). The library should be scanned again.
+    Added(AddedBook),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,6 +103,8 @@ pub enum SubmitError {
     Full,
     Conflict,
     InvalidDestination(String),
+    /// An [`ExternalJob`] refused itself (`admit`); the text says why, for the user.
+    Unavailable(String),
 }
 
 type Task = Box<dyn FnOnce(&Context) -> Result<JobOutput, Error> + Send>;
@@ -154,21 +197,42 @@ impl JobHandle {
     }
 }
 
-struct Context {
+/// What a running job sees of the executor.
+pub struct Context {
     id: JobId,
     cancel: CancellationToken,
     events: mpsc::Sender<JobEvent>,
 }
 impl Context {
-    fn check(&self) -> Result<(), Error> {
+    /// Fails with `Cancelled` once the job was cancelled (or the executor is shutting down).
+    pub fn check(&self) -> Result<(), Error> {
         if self.cancel.is_cancelled() {
             Err(cancelled())
         } else {
             Ok(())
         }
     }
-    fn stage(&self, stage: Stage) {
+    pub fn cancellation(&self) -> &CancellationToken {
+        &self.cancel
+    }
+    pub fn stage(&self, stage: Stage) {
         let _ = self.events.send(JobEvent::Stage { id: self.id, stage });
+    }
+
+    /// Reports bytes received; at most ten events a second, and always the one that completes a
+    /// known total. Call it after every chunk.
+    pub fn download_progress(&self) -> impl FnMut(u64, Option<u64>) + '_ {
+        let mut last = Instant::now() - Duration::from_secs(1);
+        move |completed, total| {
+            if total == Some(completed) || last.elapsed() >= Duration::from_millis(100) {
+                let _ = self.events.send(JobEvent::DownloadProgress {
+                    id: self.id,
+                    completed,
+                    total,
+                });
+                last = Instant::now();
+            }
+        }
     }
 
     fn copy_progress(&self) -> impl FnMut(u64, u64) + '_ {
@@ -235,6 +299,13 @@ impl JobExecutor {
         // Only path resolution happens here; scans/processes/copying run on workers.
         let keys = match &request {
             JobRequest::Scan { .. } | JobRequest::Metadata { .. } | JobRequest::Backends => vec![],
+            JobRequest::External(job) => {
+                job.admit().map_err(SubmitError::Unavailable)?;
+                job.writes_to()
+                    .iter()
+                    .map(|path| destination_key(path))
+                    .collect::<Result<_, _>>()?
+            }
             JobRequest::ConvertFiles { output_dir, .. } => vec![destination_key(output_dir)?],
             JobRequest::Convert { output_dir, .. } => vec![destination_key(output_dir)?],
             JobRequest::Send { device, .. } if device.is_mtp() => {
@@ -326,6 +397,7 @@ impl JobExecutor {
                     )
                     .map(JobOutput::Sent)
                 }
+                JobRequest::External(job) => job.run(ctx),
             }),
         )
     }
@@ -1015,6 +1087,238 @@ mod tests {
         assert!(matches!(
             handle.wait().unwrap_err().kind,
             ErrorKind::InvalidInput
+        ));
+    }
+
+    #[derive(Debug)]
+    struct Scripted {
+        writes: Vec<PathBuf>,
+        refuse: Option<String>,
+        started: Option<mpsc::Sender<()>>,
+        gate: Option<Mutex<mpsc::Receiver<()>>>,
+    }
+    impl Scripted {
+        fn new(writes: Vec<PathBuf>) -> Self {
+            Self {
+                writes,
+                refuse: None,
+                started: None,
+                gate: None,
+            }
+        }
+    }
+    impl ExternalJob for Scripted {
+        fn title(&self) -> String {
+            "scripted".into()
+        }
+        fn writes_to(&self) -> Vec<PathBuf> {
+            self.writes.clone()
+        }
+        fn admit(&self) -> Result<(), String> {
+            self.refuse.clone().map_or(Ok(()), Err)
+        }
+        fn run(&self, ctx: &Context) -> Result<JobOutput, Error> {
+            ctx.stage(Stage::Downloading);
+            let mut progress = ctx.download_progress();
+            progress(0, None);
+            // Within the throttle interval: dropped, unless it completes a known total.
+            progress(10, Some(100));
+            progress(100, Some(100));
+            if let Some(started) = &self.started {
+                started.send(()).unwrap();
+            }
+            if let Some(gate) = &self.gate {
+                gate.lock().unwrap().recv_timeout(TIMEOUT).unwrap();
+            }
+            ctx.check()?;
+            ctx.stage(Stage::Adding);
+            Ok(JobOutput::Added(AddedBook {
+                library: self.writes.first().cloned().unwrap_or_default(),
+                title: "Book".into(),
+                outcome: AddOutcome::AlreadyExists,
+            }))
+        }
+    }
+
+    #[test]
+    fn external_job_runs_on_a_worker_and_reports_stages_and_download_progress() {
+        let executor = JobExecutor::new(1, 2).unwrap();
+        let handle = executor
+            .submit(JobRequest::External(Arc::new(Scripted::new(vec![]))))
+            .unwrap();
+        let id = handle.id;
+        let events = terminal(&handle);
+        let progress: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                JobEvent::DownloadProgress {
+                    id: event_id,
+                    completed,
+                    total,
+                } => {
+                    assert_eq!(*event_id, id);
+                    Some((*completed, *total))
+                }
+                _ => None,
+            })
+            .collect();
+        // The first figure always goes out; so does the one that completes a known total. The
+        // ones between are dropped inside the 100 ms interval (and may or may not be sent).
+        assert_eq!(progress.first(), Some(&(0, None)));
+        assert_eq!(progress.last(), Some(&(100, Some(100))));
+        assert!(progress.len() <= 3);
+        // Everything else in the order the job ran.
+        let rest: Vec<_> = events
+            .into_iter()
+            .filter(|e| !matches!(e, JobEvent::DownloadProgress { .. }))
+            .collect();
+        assert_eq!(
+            rest,
+            vec![
+                JobEvent::State {
+                    id,
+                    state: JobState::Waiting
+                },
+                JobEvent::State {
+                    id,
+                    state: JobState::Running
+                },
+                JobEvent::Stage {
+                    id,
+                    stage: Stage::Downloading
+                },
+                JobEvent::Stage {
+                    id,
+                    stage: Stage::Adding
+                },
+                JobEvent::State {
+                    id,
+                    state: JobState::Succeeded
+                },
+            ]
+        );
+        let JobOutput::Added(book) = handle.wait().unwrap() else {
+            panic!("wrong result")
+        };
+        assert_eq!(book.outcome, AddOutcome::AlreadyExists);
+    }
+
+    #[test]
+    fn external_job_may_refuse_itself_before_it_is_queued() {
+        let executor = JobExecutor::new(1, 1).unwrap();
+        let job = Scripted {
+            refuse: Some("Calibre is needed".into()),
+            ..Scripted::new(vec![])
+        };
+        assert_eq!(
+            executor.submit(JobRequest::External(Arc::new(job))).err(),
+            Some(SubmitError::Unavailable("Calibre is needed".into()))
+        );
+        // It took no capacity.
+        executor
+            .submit(JobRequest::External(Arc::new(Scripted::new(vec![]))))
+            .unwrap()
+            .wait()
+            .unwrap();
+    }
+
+    #[test]
+    fn external_job_paths_conflict_with_overlapping_paths_until_it_ends() {
+        let fixture = Fixture::new();
+        let executor = JobExecutor::new(3, 4).unwrap();
+        let (started, running) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let holder = Scripted {
+            started: Some(started),
+            gate: Some(Mutex::new(gate)),
+            ..Scripted::new(vec![fixture.library.clone()])
+        };
+        let first = executor
+            .submit(JobRequest::External(Arc::new(holder)))
+            .unwrap();
+        running.recv_timeout(TIMEOUT).unwrap();
+
+        // The same path, a path inside it, and a conversion that writes inside it conflict.
+        for path in [
+            fixture.library.clone(),
+            fixture.library.join("Автор Example"),
+        ] {
+            assert!(matches!(
+                executor.submit(JobRequest::External(Arc::new(Scripted::new(vec![path])))),
+                Err(SubmitError::Conflict)
+            ));
+        }
+        assert!(matches!(
+            executor.submit(JobRequest::Convert {
+                library: fixture.library.clone(),
+                output_dir: fixture.library.join("Автор Example"),
+                source: fixture.book.join("A small book.epub"),
+                target: Format::Pdf,
+            }),
+            Err(SubmitError::Conflict)
+        ));
+        // A scan reserves nothing, and an unrelated directory is free.
+        let scan = executor
+            .submit(JobRequest::Scan {
+                library: fixture.library.clone(),
+            })
+            .unwrap();
+        let other = executor
+            .submit(JobRequest::External(Arc::new(Scripted::new(vec![
+                fixture.kobo.clone(),
+            ]))))
+            .unwrap();
+        scan.wait().unwrap();
+        other.wait().unwrap();
+
+        release.send(()).unwrap();
+        first.wait().unwrap();
+        executor
+            .submit(JobRequest::External(Arc::new(Scripted::new(vec![
+                fixture.library.clone(),
+            ]))))
+            .unwrap()
+            .wait()
+            .unwrap();
+    }
+
+    #[test]
+    fn external_job_path_that_does_not_exist_is_an_invalid_destination() {
+        let executor = JobExecutor::new(1, 1).unwrap();
+        assert!(matches!(
+            executor.submit(JobRequest::External(Arc::new(Scripted::new(vec![
+                "no-such-folder".into()
+            ])))),
+            Err(SubmitError::InvalidDestination(_))
+        ));
+    }
+
+    #[test]
+    fn external_job_is_cancelled_through_the_context_like_any_other() {
+        let executor = JobExecutor::new(1, 2).unwrap();
+        let (started, running) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let job = Scripted {
+            started: Some(started),
+            gate: Some(Mutex::new(gate)),
+            ..Scripted::new(vec![])
+        };
+        let handle = executor
+            .submit(JobRequest::External(Arc::new(job)))
+            .unwrap();
+        running.recv_timeout(TIMEOUT).unwrap();
+        handle.cancel();
+        release.send(()).unwrap();
+        assert!(matches!(
+            terminal(&handle).last(),
+            Some(JobEvent::State {
+                state: JobState::Cancelled,
+                ..
+            })
+        ));
+        assert!(matches!(
+            handle.wait().unwrap_err().kind,
+            ErrorKind::Cancelled
         ));
     }
 }

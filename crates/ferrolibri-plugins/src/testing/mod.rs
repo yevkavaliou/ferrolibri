@@ -28,4 +28,4 @@ mod server;
 mod zipfile;
 
 pub use server::{CATALOG_HOST, Context, LoopbackResolver, Reply, Request, TestServer};
-pub use zipfile::single_file_zip;
+pub use zipfile::{single_file_zip, zip_declaring, zip_stored};

@@ -18,8 +18,13 @@ pub fn unfinished(job: &JobView) -> bool {
 pub fn listed(job: &JobView) -> bool {
     !matches!(job.kind, JobKind::Metadata | JobKind::Backends)
 }
+fn megabytes(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+}
 pub fn percentage(job: &JobView) -> Option<f32> {
-    if job.kind != JobKind::Send || job.stage != Some(Stage::Copying) {
+    let copying = job.kind == JobKind::Send && job.stage == Some(Stage::Copying);
+    let downloading = job.kind == JobKind::Download && job.stage == Some(Stage::Downloading);
+    if !copying && !downloading {
         return None;
     }
     job.progress.map(|(completed, total)| {
@@ -43,6 +48,12 @@ pub fn status(job: &JobView) -> String {
             Some(Stage::Copying) => percentage(job)
                 .map(|p| format!("Copying · {p:.0}%"))
                 .unwrap_or_else(|| "Copying…".into()),
+            Some(Stage::Downloading) => match (percentage(job), job.received) {
+                (Some(p), _) => format!("Downloading · {p:.0}%"),
+                (None, Some(bytes)) => format!("Downloading · {}", megabytes(bytes)),
+                (None, None) => "Downloading…".into(),
+            },
+            Some(Stage::Adding) => "Adding to library…".into(),
             None => "Starting…".into(),
         },
     }
@@ -59,6 +70,14 @@ fn result_text(state: &State, job: &JobView) -> String {
         Some(Ok(JobOutput::Conversion(result))) => {
             format!("Converted · {}", result.output_path.display())
         }
+        Some(Ok(JobOutput::Added(book))) => match book.outcome {
+            ferrolibri_core::calibre::AddOutcome::Added { .. } => {
+                format!("Added to the library · {}", book.title)
+            }
+            ferrolibri_core::calibre::AddOutcome::AlreadyExists => {
+                format!("Already in the library · {}", book.title)
+            }
+        },
         _ if job.kind == JobKind::Scan => "Scanned".into(),
         _ => status(job),
     }
@@ -188,12 +207,18 @@ mod tests {
             state: JobState::Succeeded,
             stage: None,
             progress: None,
+            received: None,
             error: None,
         };
         assert!(!listed(&job));
         job.kind = JobKind::Backends;
         assert!(!listed(&job));
-        for kind in [JobKind::Scan, JobKind::Convert, JobKind::Send] {
+        for kind in [
+            JobKind::Scan,
+            JobKind::Convert,
+            JobKind::Send,
+            JobKind::Download,
+        ] {
             job.kind = kind;
             assert!(listed(&job));
         }
@@ -207,6 +232,7 @@ mod tests {
             state: JobState::Running,
             stage: Some(Stage::Preparing),
             progress: Some((42, 100)),
+            received: None,
             error: None,
         };
         assert_eq!(percentage(&job), None);
@@ -224,5 +250,26 @@ mod tests {
         assert_eq!(percentage(&job), None);
         job.state = JobState::Cancelled;
         assert_eq!(status(&job), "Cancelled");
+    }
+    #[test]
+    fn a_download_shows_percent_when_the_size_is_known_and_megabytes_when_it_is_not() {
+        let mut job = JobView {
+            id: crate::services::jobs::JobId(1),
+            title: "Download".into(),
+            kind: JobKind::Download,
+            state: JobState::Running,
+            stage: Some(Stage::Downloading),
+            progress: None,
+            received: None,
+            error: None,
+        };
+        assert_eq!(status(&job), "Downloading…");
+        job.received = Some(2_500_000);
+        assert_eq!(status(&job), "Downloading · 2.5 MB");
+        job.progress = Some((25, 100));
+        assert_eq!(status(&job), "Downloading · 25%");
+        job.stage = Some(Stage::Adding);
+        assert_eq!(percentage(&job), None);
+        assert_eq!(status(&job), "Adding to library…");
     }
 }

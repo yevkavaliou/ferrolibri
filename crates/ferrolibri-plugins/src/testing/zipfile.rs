@@ -1,56 +1,81 @@
-//! A minimal ZIP writer for fixtures: one stored (uncompressed) entry, nothing else.
+//! A minimal ZIP writer for fixtures: stored (uncompressed) entries, nothing else.
 
 /// A valid `.zip` with a single file `name` holding `data`, stored without compression.
 pub fn single_file_zip(name: &str, data: &[u8]) -> Vec<u8> {
-    let crc = crc32(data);
-    let size = data.len() as u32;
-    let name = name.as_bytes();
+    zip_stored(&[(name, data)])
+}
+
+/// A valid `.zip` whose entries are stored without compression, in this order.
+pub fn zip_stored(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let entries: Vec<_> = entries.iter().map(|(n, d)| (*n, *d, None)).collect();
+    build(&entries)
+}
+
+/// A `.zip` whose central directory *claims* each entry has the given uncompressed size while
+/// the data is empty: for the limit on the size an archive may unpack to.
+pub fn zip_declaring(entries: &[(&str, u32)]) -> Vec<u8> {
+    let entries: Vec<_> = entries
+        .iter()
+        .map(|(n, s)| (*n, &[][..], Some(*s)))
+        .collect();
+    build(&entries)
+}
+
+fn build(entries: &[(&str, &[u8], Option<u32>)]) -> Vec<u8> {
     let mut out = Vec::new();
+    let mut directory = Vec::new();
+    for (name, data, declared) in entries {
+        let crc = crc32(data);
+        let size = data.len() as u32;
+        let claimed = declared.unwrap_or(size);
+        let name = name.as_bytes();
+        let offset = out.len() as u32;
 
-    // Local file header.
-    out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
-    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
-    out.extend_from_slice(&0x0800u16.to_le_bytes()); // flags: UTF-8 name
-    out.extend_from_slice(&0u16.to_le_bytes()); // method: stored
-    out.extend_from_slice(&0u16.to_le_bytes()); // time
-    out.extend_from_slice(&0x0021u16.to_le_bytes()); // date: 1980-01-01
-    out.extend_from_slice(&crc.to_le_bytes());
-    out.extend_from_slice(&size.to_le_bytes());
-    out.extend_from_slice(&size.to_le_bytes());
-    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes()); // extra length
-    out.extend_from_slice(name);
-    out.extend_from_slice(data);
+        // Local file header.
+        out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+        out.extend_from_slice(&0x0800u16.to_le_bytes()); // flags: UTF-8 name
+        out.extend_from_slice(&0u16.to_le_bytes()); // method: stored
+        out.extend_from_slice(&0u16.to_le_bytes()); // time
+        out.extend_from_slice(&0x0021u16.to_le_bytes()); // date: 1980-01-01
+        out.extend_from_slice(&crc.to_le_bytes());
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes()); // extra length
+        out.extend_from_slice(name);
+        out.extend_from_slice(data);
 
-    // Central directory.
+        // Its record in the central directory.
+        directory.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        directory.extend_from_slice(&20u16.to_le_bytes()); // version made by
+        directory.extend_from_slice(&20u16.to_le_bytes()); // version needed
+        directory.extend_from_slice(&0x0800u16.to_le_bytes());
+        directory.extend_from_slice(&0u16.to_le_bytes());
+        directory.extend_from_slice(&0u16.to_le_bytes());
+        directory.extend_from_slice(&0x0021u16.to_le_bytes());
+        directory.extend_from_slice(&crc.to_le_bytes());
+        directory.extend_from_slice(&size.to_le_bytes());
+        directory.extend_from_slice(&claimed.to_le_bytes());
+        directory.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        directory.extend_from_slice(&0u16.to_le_bytes()); // extra length
+        directory.extend_from_slice(&0u16.to_le_bytes()); // comment length
+        directory.extend_from_slice(&0u16.to_le_bytes()); // disk number
+        directory.extend_from_slice(&0u16.to_le_bytes()); // internal attributes
+        directory.extend_from_slice(&0u32.to_le_bytes()); // external attributes
+        directory.extend_from_slice(&offset.to_le_bytes()); // offset of the local header
+        directory.extend_from_slice(name);
+    }
     let directory_offset = out.len() as u32;
-    out.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
-    out.extend_from_slice(&20u16.to_le_bytes()); // version made by
-    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
-    out.extend_from_slice(&0x0800u16.to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes());
-    out.extend_from_slice(&0x0021u16.to_le_bytes());
-    out.extend_from_slice(&crc.to_le_bytes());
-    out.extend_from_slice(&size.to_le_bytes());
-    out.extend_from_slice(&size.to_le_bytes());
-    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes()); // extra length
-    out.extend_from_slice(&0u16.to_le_bytes()); // comment length
-    out.extend_from_slice(&0u16.to_le_bytes()); // disk number
-    out.extend_from_slice(&0u16.to_le_bytes()); // internal attributes
-    out.extend_from_slice(&0u32.to_le_bytes()); // external attributes
-    out.extend_from_slice(&0u32.to_le_bytes()); // offset of the local header
-    out.extend_from_slice(name);
-    let directory_size = out.len() as u32 - directory_offset;
+    out.extend_from_slice(&directory);
 
     // End of central directory.
     out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&directory_size.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    out.extend_from_slice(&(directory.len() as u32).to_le_bytes());
     out.extend_from_slice(&directory_offset.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes());
     out
