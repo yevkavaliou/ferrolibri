@@ -3,7 +3,7 @@
 //! It fixes what a plugin may declare (`plugin.toml`) and what it may return (JSON), and rejects
 //! everything else. Everything that comes from a plugin is untrusted. The reference document is
 //! `docs/PLUGIN_API.md`. The crate also holds the HTTP layer through which all network access of
-//! the app and of plugins goes ([`http`]); it contains no plugin runtime.
+//! the app and of plugins goes ([`http`]); and the QuickJS runtime that runs plugins ([`PluginRuntime`]).
 
 mod domain;
 mod download;
@@ -11,6 +11,7 @@ mod host_error;
 pub mod http;
 pub mod limits;
 mod manifest;
+mod runtime;
 mod search;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
@@ -27,6 +28,7 @@ pub use manifest::{
     Compatibility, Limits, Manifest, ManifestError, Network, Reason, Setting, SettingKind,
     SettingValue,
 };
+pub use runtime::{LoadedPlugin, LogLevel, LogRecord, LogSink, PluginFunction, PluginRuntime};
 pub use search::{
     Archive, Offer, ParsedPage, ResponseError, SearchHit, SearchPage, SearchQuery, Warning,
     merge_details, parse_search_page,

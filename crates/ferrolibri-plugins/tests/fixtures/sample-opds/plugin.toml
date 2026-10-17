@@ -1,0 +1,18 @@
+id = "sample-opds"
+name = "Sample OPDS catalog"
+version = "0.1.0"
+api_version = 1
+provides = ["search"]
+author = "FerroLibri"
+license = "MIT"
+description = "Searches an OPDS catalog the user names in the settings."
+search_hint = "Search by title only"
+content = ["metadata", "public-domain"]
+
+# No domains of its own: the catalog is whatever address the user enters (D4).
+
+[[settings]]
+key = "base_url"
+type = "url"
+label = "Catalog address"
+network = true

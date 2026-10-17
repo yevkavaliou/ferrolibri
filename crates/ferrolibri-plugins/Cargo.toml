@@ -3,7 +3,7 @@ name = "ferrolibri-plugins"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Plugin contract for FerroLibri — manifest, search result types and validation."
+description = "Plugins for FerroLibri — contract, HTTP layer and the QuickJS sandbox that runs them."
 
 [lib]
 path = "src/lib.rs"
@@ -19,6 +19,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 semver = "1.0.27"
+# The plugin runtime (D1). `std` is the default feature set; nothing else is needed.
+rquickjs = "0.14"
+# `host.html.select` and `host.xml.parse` (D3); the same pin as the core.
+kuchikiki = "=0.8.8-speedreader"
+roxmltree = { workspace = true }
+log = "0.4"
 url = "2"
 # Only to recognise TLS failures: `ureq` hands them over as a bare `rustls::Error` in an `io::Error`.
 rustls = { version = "0.23", default-features = false, features = ["std"] }

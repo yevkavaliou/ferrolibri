@@ -1,0 +1,14 @@
+id = "test-loopback"
+name = "Loopback"
+version = "0.1.0"
+api_version = 1
+provides = ["search"]
+
+[network]
+domains = ["books.example.org"]
+
+[[settings]]
+key = "base_url"
+type = "url"
+label = "Address"
+network = true

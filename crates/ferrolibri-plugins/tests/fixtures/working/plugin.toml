@@ -1,0 +1,18 @@
+id = "test-working"
+name = "Working test plugin"
+version = "0.1.0"
+api_version = 1
+provides = ["search"]
+description = "Answers from memory: no network. Uses host.url, host.html, host.xml and host.log."
+
+[[settings]]
+key = "shelf"
+type = "string"
+label = "Shelf"
+default = "main"
+
+[[settings]]
+key = "loud"
+type = "bool"
+label = "Loud"
+default = false

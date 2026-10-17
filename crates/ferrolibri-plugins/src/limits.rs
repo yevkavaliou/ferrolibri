@@ -74,3 +74,33 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// A streamed download is aborted when no byte arrives for this long.
 pub const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_REQUEST_HEADER_VALUE_CHARS: usize = 1000;
+
+// Plugin runtime (D6). One call = one QuickJS runtime on its own thread.
+
+/// Memory of one plugin call's QuickJS runtime.
+pub const PLUGIN_MEMORY_BYTES: usize = 64 * 1024 * 1024;
+/// JavaScript stack of one plugin call.
+pub const PLUGIN_STACK_BYTES: usize = 1024 * 1024;
+/// Native stack of the thread that runs a plugin call: the JavaScript stack plus the host's own
+/// recursion (XML trees are built recursively).
+pub const PLUGIN_THREAD_STACK_BYTES: usize = 8 * 1024 * 1024;
+/// How long past its deadline a call may take to unwind before the caller stops waiting for the
+/// thread and reports a timeout (the thread is then abandoned).
+pub const PLUGIN_UNWIND_GRACE: Duration = Duration::from_secs(3);
+/// Text handed to `host.html.select` or `host.xml.parse` (the size of a `host.fetch` body).
+pub const MAX_PARSE_INPUT_BYTES: usize = MAX_FETCH_BODY_BYTES as usize;
+/// Deepest nesting of elements `host.html.select` accepts (browsers stop at 512 as well).
+pub const MAX_HTML_DEPTH: usize = 512;
+/// Tags open at once, by a count from the text, past which `host.html.select` refuses a page:
+/// the HTML parser is quadratic in the depth of unclosed `<div>`s and cannot be interrupted.
+pub const MAX_HTML_UNCLOSED_TAGS: usize = 20_000;
+/// Elements `host.html.select` returns for one selector.
+pub const MAX_SELECT_MATCHES: usize = 5_000;
+/// Text and markup `host.html.select` returns for one call, all matches together.
+pub const MAX_SELECT_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
+/// Elements `host.xml.parse` accepts.
+pub const MAX_XML_NODES: u32 = 200_000;
+/// `host.log` messages are cut to this many characters ...
+pub const MAX_LOG_MESSAGE_CHARS: usize = 2000;
+/// ... and a call writes at most this many of them.
+pub const MAX_LOG_ENTRIES_PER_CALL: u32 = 200;

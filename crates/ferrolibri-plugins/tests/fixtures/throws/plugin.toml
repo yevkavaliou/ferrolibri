@@ -1,0 +1,5 @@
+id = "test-throws"
+name = "Throws"
+version = "0.1.0"
+api_version = 1
+provides = ["search"]

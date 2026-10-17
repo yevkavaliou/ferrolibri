@@ -1,0 +1,8 @@
+id = "test-infinite-loop"
+name = "Infinite loop"
+version = "0.1.0"
+api_version = 1
+provides = ["search"]
+
+[limits]
+call_timeout_s = 5

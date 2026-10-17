@@ -1,0 +1,11 @@
+id = "test-huge"
+name = "Huge"
+version = "0.1.0"
+api_version = 1
+provides = ["search"]
+
+[[settings]]
+key = "base_url"
+type = "url"
+label = "Address"
+network = true
