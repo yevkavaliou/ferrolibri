@@ -13,6 +13,10 @@ pub enum ErrorKind {
     ConversionUnavailable {
         diagnostic: String,
     },
+    /// `calibredb` is not installed or cannot be located.
+    CalibreUnavailable {
+        diagnostic: String,
+    },
     InvalidInput,
     Conflict,
     PartialTransfer {
@@ -76,7 +80,8 @@ impl fmt::Display for Error {
             ErrorKind::Io(e) => write!(f, ": {e}"),
             ErrorKind::InvalidData(e) => write!(f, ": invalid data: {e}"),
             ErrorKind::Unavailable => write!(f, ": unavailable"),
-            ErrorKind::ConversionUnavailable { diagnostic } => write!(f, ": {diagnostic}"),
+            ErrorKind::ConversionUnavailable { diagnostic }
+            | ErrorKind::CalibreUnavailable { diagnostic } => write!(f, ": {diagnostic}"),
             ErrorKind::InvalidInput => write!(f, ": invalid input"),
             ErrorKind::Conflict => write!(f, ": destination already exists"),
             ErrorKind::PartialTransfer {

@@ -183,7 +183,7 @@ impl CancellationToken {
     }
 }
 
-trait ProcessRunner {
+pub(crate) trait ProcessRunner {
     fn output(
         &mut self,
         command: &mut Command,
@@ -192,7 +192,7 @@ trait ProcessRunner {
     ) -> io::Result<Output>;
 }
 
-struct SystemRunner;
+pub(crate) struct SystemRunner;
 
 impl ProcessRunner for SystemRunner {
     fn output(
@@ -291,11 +291,16 @@ impl ProcessRunner for SystemRunner {
 }
 
 // Discovery resolves an executable once; execution uses that exact absolute path.
-fn executable(program: &str) -> io::Result<Option<PathBuf>> {
-    let Some(paths) = std::env::var_os("PATH") else {
-        return Ok(None);
-    };
-    for dir in std::env::split_paths(&paths) {
+// Calibre's own programs are also looked up in its standard install locations: a
+// freshly installed Calibre is not on the PATH of an already running process.
+pub(crate) fn executable(program: &str) -> io::Result<Option<PathBuf>> {
+    let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).collect())
+        .unwrap_or_default();
+    if crate::calibre::is_calibre_program(program) {
+        directories.extend(crate::calibre::standard_dirs());
+    }
+    for dir in directories {
         #[cfg(windows)]
         let candidate = dir.join(format!("{program}.exe"));
         #[cfg(not(windows))]

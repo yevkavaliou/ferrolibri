@@ -1,4 +1,5 @@
 pub mod book;
+pub mod calibre;
 pub mod config;
 pub mod conversion_model;
 pub mod converter;
