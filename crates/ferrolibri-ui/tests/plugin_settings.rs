@@ -386,6 +386,11 @@ fn settings_screen(fake: &Fake) -> State {
     let mut state = State::default();
     state.window_width = 1100.0;
     send(&mut state, Message::Navigate(Screen::Settings), fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        fake,
+    );
     state
 }
 
@@ -433,6 +438,11 @@ fn opening_settings_lists_plugins_or_says_there_are_none() {
     let mut state = state;
     send(&mut state, Message::Navigate(Screen::Jobs), &fake);
     send(&mut state, Message::Navigate(Screen::Settings), &fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        &fake,
+    );
     assert_eq!(fake.count("list"), 2);
 }
 
@@ -511,6 +521,11 @@ fn permissions_point_out_a_long_time_budget_an_entered_address_and_no_network() 
     assert_hides(&state, &["Use no network at all", "Declare content"]);
     lock(&fake.script).rows = vec![offline];
     send(&mut state, Message::Navigate(Screen::Settings), &fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        &fake,
+    );
     plugins(&mut state, Msg::ToggleDetails("offline".into()), &fake);
     assert_shows(&state, &["Use no network at all"]);
 }
@@ -761,6 +776,11 @@ fn edits_that_are_not_saved_survive_leaving_the_screen_and_a_reload() {
     );
     send(&mut state, Message::Navigate(Screen::Jobs), &fake);
     send(&mut state, Message::Navigate(Screen::Settings), &fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        &fake,
+    );
     let form = &state.plugins.forms["opds"];
     assert_eq!(form.values[1], FieldValue::Bool(true));
     assert_eq!(form.values[2], FieldValue::Text("newest".into()));
@@ -1717,5 +1737,10 @@ fn settings_screen_with(services: &dyn Services) -> State {
     let mut state = State::default();
     state.window_width = 1100.0;
     send(&mut state, Message::Navigate(Screen::Settings), services);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        services,
+    );
     state
 }

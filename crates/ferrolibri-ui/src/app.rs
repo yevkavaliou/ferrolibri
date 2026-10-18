@@ -38,6 +38,15 @@ pub enum Screen {
     Settings,
 }
 
+/// Tabs on the Settings screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SettingsTab {
+    #[default]
+    General,
+    Appearance,
+    Plugins,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum FacetGroup {
     Library,
@@ -57,6 +66,7 @@ pub struct State {
     pub readers: crate::services::devices::ReaderState,
     pub reader_picker: crate::services::devices::ReaderPicker,
     pub screen: Screen,
+    pub settings_tab: SettingsTab,
     pub settings: UiSettings,
     pub notices: Vec<String>,
     pub jobs: BTreeMap<JobId, JobView>,
@@ -342,6 +352,7 @@ pub enum Message {
         result: Result<(), String>,
     },
     SetPreferKepub(bool),
+    SetSettingsTab(SettingsTab),
     ExportBrowse,
     ExportPicked {
         generation: u64,
@@ -525,6 +536,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         }
         Message::RefreshBackends => {}
         Message::Ignore => {}
+        Message::SetSettingsTab(tab) => state.settings_tab = tab,
         Message::ToggleConvert => state.convert_menu = !state.convert_menu,
         Message::CloseConvertMenu => state.convert_menu = false,
         Message::CancelConvert => {

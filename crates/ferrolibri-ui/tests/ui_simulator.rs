@@ -88,6 +88,49 @@ fn first_book_title(state: &State, index: usize) -> String {
 }
 
 #[test]
+fn settings_tabs_split_the_settings_into_general_appearance_and_plugins() {
+    headless();
+    let fixture = test_support::Fixture::new();
+    let services = services(&fixture);
+    let mut state = home(&fixture);
+    interact(&mut state, &services, |ui| {
+        ui.click("Settings").unwrap();
+    });
+    let shows = |state: &State, shown: &[&str], hidden: &[&str]| {
+        let mut ui = iced_test::simulator(app::view(state));
+        for text in shown {
+            assert!(ui.find(*text).is_ok(), "{text:?} should be shown");
+        }
+        for text in hidden {
+            assert!(ui.find(*text).is_err(), "{text:?} must not be shown");
+        }
+    };
+    let general = ["Prefer KEPUB for Kobo", "Library folder", "Export folder"];
+    let appearance = ["Text size", "Cover size", "Window opacity", "Blur window"];
+    shows(
+        &state,
+        &general,
+        &[appearance.as_slice(), &["Install plugin…"]].concat(),
+    );
+    interact(&mut state, &services, |ui| {
+        ui.click("Appearance").unwrap();
+    });
+    shows(
+        &state,
+        &appearance,
+        &[general.as_slice(), &["Install plugin…"]].concat(),
+    );
+    interact(&mut state, &services, |ui| {
+        ui.click("Plugins").unwrap();
+    });
+    shows(
+        &state,
+        &["Install plugin…"],
+        &[general.as_slice(), appearance.as_slice()].concat(),
+    );
+}
+
+#[test]
 fn clicking_sidebar_items_changes_the_screen_and_the_rendered_content() {
     headless();
     let fixture = test_support::Fixture::new();

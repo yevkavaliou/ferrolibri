@@ -1,6 +1,6 @@
 use crate::settings::{COVER_SIZE_RANGE, COVER_SIZE_STEP, TEXT_SIZE_RANGE};
 use crate::{
-    app::{Message, State},
+    app::{Message, SettingsTab, State},
     theme,
 };
 use iced::{
@@ -62,7 +62,7 @@ pub fn view(state: &State) -> Element<'_, Message> {
     if !state.closing {
         kepub = kepub.on_toggle(Message::SetPreferKepub);
     }
-    let rows = column![
+    let appearance = column![
         setting_row(
             state,
             "Text size",
@@ -136,6 +136,9 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 blur.into()
             }
         ),
+    ]
+    .spacing(24);
+    let general = column![
         setting_row(
             state,
             "Prefer KEPUB for Kobo",
@@ -145,17 +148,45 @@ pub fn view(state: &State) -> Element<'_, Message> {
         setting_row(state, "Library folder", library, library_button.into()),
         setting_row(state, "Export folder", export, export_button.into()),
     ]
-    .spacing(24)
-    .push(super::plugins::group(state));
+    .spacing(24);
+    let rows: Element<'_, Message> = match state.settings_tab {
+        SettingsTab::General => general.into(),
+        SettingsTab::Appearance => appearance.into(),
+        SettingsTab::Plugins => super::plugins::group(state),
+    };
     column![
         container(text("Settings").size(theme::font(state, 16.0)))
             .padding(super::book_list::header_padding())
             .height(36.0 + theme::HEADER_TOP),
+        tabs(state),
         scrollable(container(rows).padding(20).width(Fill))
             .direction(theme::vbar())
             .style(theme::scroll(state)),
     ]
     .height(Fill)
+    .into()
+}
+fn tabs(state: &State) -> Element<'_, Message> {
+    let tab = |label: &'static str, target: SettingsTab| {
+        let kind = if state.settings_tab == target {
+            theme::Button::Selected
+        } else {
+            theme::Button::Quiet
+        };
+        button(text(label).size(theme::font(state, 13.0)))
+            .padding([4, 12])
+            .style(move |_, status| theme::button_style(kind, status))
+            .on_press(Message::SetSettingsTab(target))
+    };
+    container(
+        row![
+            tab("General", SettingsTab::General),
+            tab("Appearance", SettingsTab::Appearance),
+            tab("Plugins", SettingsTab::Plugins),
+        ]
+        .spacing(6),
+    )
+    .padding([0, 20])
     .into()
 }
 fn setting_row<'a>(

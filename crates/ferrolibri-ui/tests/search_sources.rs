@@ -537,6 +537,11 @@ fn the_switch_is_there_once_a_plugin_is_installed_and_gone_without_one() {
     // Removing the plugin takes the switch away the next time Search is opened.
     fake.set_rows(Vec::new());
     send(&mut state, Message::Navigate(Screen::Settings), &fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        &fake,
+    );
     send(&mut state, Message::Navigate(Screen::Search), &fake);
     assert_hides(&state, &["Standard Ebooks"]);
 }
@@ -644,6 +649,11 @@ fn the_chosen_source_is_saved_and_a_vanished_one_falls_back_to_the_library() {
     );
     fake.set_rows(Vec::new());
     send(&mut state, Message::Navigate(Screen::Settings), &fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        &fake,
+    );
     send(&mut state, Message::Navigate(Screen::Search), &fake);
     assert_eq!(
         ferrolibri_ui::remote::current(&state),
@@ -664,6 +674,11 @@ fn the_chosen_source_is_saved_and_a_vanished_one_falls_back_to_the_library() {
     };
     fake.set_rows(vec![standard_ebooks()]);
     send(&mut state, Message::Navigate(Screen::Settings), &fake);
+    send(
+        &mut state,
+        Message::SetSettingsTab(ferrolibri_ui::app::SettingsTab::Plugins),
+        &fake,
+    );
     remote(
         &mut state,
         Msg::SourceChosen(SearchSource::Plugin("standard-ebooks".into())),

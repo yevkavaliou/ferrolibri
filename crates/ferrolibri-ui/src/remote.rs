@@ -447,6 +447,7 @@ pub fn update(state: &mut State, msg: Msg, services: &dyn Services) -> Task<Mess
         }
         Msg::OpenPluginSettings(id) => {
             state.plugins.expanded = Some(id);
+            state.settings_tab = crate::app::SettingsTab::Plugins;
             crate::app::update(state, Message::Navigate(Screen::Settings), services)
         }
         Msg::OpenPage(url) => Task::perform(services.open_url(url), |r| Msg::PageOpened(r).into()),
