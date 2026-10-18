@@ -3,11 +3,12 @@
 //! The views never touch `ferrolibri-plugins` types, so a test can describe a plugin, a
 //! release or a failure in a few lines. [`PluginBackend`] is the real thing: it reads the
 //! store, asks GitHub or a web address for a plugin, and installs what the user confirmed.
-use ferrolibri_core::converter::CancellationToken;
+use ferrolibri_core::{ErrorKind, converter::CancellationToken};
 use ferrolibri_plugins::{
-    Downgrade, Http, Inspection, InstallChange, InstallSource, InstalledPlugin, Manifest,
-    ManifestError, PluginStatus, PluginStore, Release, ReleaseCheck, ReleaseOptions, RemoteError,
-    RemoteInstaller, RemoteSource, SUPPORTED_API_VERSIONS, SettingKind, SettingValue,
+    Downgrade, Http, Identity, Inspection, InstallChange, InstallSource, InstalledPlugin,
+    LoadedPlugin, Manifest, ManifestError, PluginFunction, PluginRuntime, PluginStatus,
+    PluginStore, Release, ReleaseCheck, ReleaseOptions, RemoteError, RemoteInstaller, RemoteSource,
+    SUPPORTED_API_VERSIONS, SearchHit, SearchQuery, SettingKind, SettingValue, parse_search_page,
 };
 use std::{
     future::Future,
@@ -124,6 +125,8 @@ pub struct PluginInfo {
     /// "GitHub · owner/repo · v1.2.0", "Folder · D:\Plugins\x", "Web address · https://…".
     pub source: String,
     pub installed: String,
+    /// `search_hint` of the manifest: the line under the Search field ("Search by title").
+    pub search_hint: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -249,6 +252,189 @@ pub struct Installed {
     pub change: Change,
     /// The plugin is new and was turned on.
     pub turned_on: bool,
+}
+
+// ---- Search sources (plan item 12) -----------------------------------------------------------
+
+pub type SourceFuture<T> = Pin<Box<dyn Future<Output = Result<T, SourceError>> + Send>>;
+
+/// Why a call of a search plugin failed, as far as the screen words it differently.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceErrorKind {
+    /// `connect`, `timeout`, `dns` or `tls`: the address, or the network, is the problem.
+    Unreachable,
+    /// The site answered with a 5xx status.
+    Server,
+    /// The plugin threw, ran out of time, or broke the contract.
+    Plugin,
+    /// The call was cancelled; nothing to show.
+    Cancelled,
+    /// The plugin cannot run any more: removed, turned off, or not compatible.
+    Unavailable,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceError {
+    pub kind: SourceErrorKind,
+    /// The plugin's own words, without its name.
+    pub message: String,
+}
+
+impl SourceError {
+    pub fn new(kind: SourceErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+    pub fn plugin(message: impl Into<String>) -> Self {
+        Self::new(SourceErrorKind::Plugin, message)
+    }
+    pub fn cancelled() -> Self {
+        Self::new(SourceErrorKind::Cancelled, "")
+    }
+    pub fn unavailable() -> Self {
+        Self::new(
+            SourceErrorKind::Unavailable,
+            "This plugin is not available. Turn it on in Settings → Plugins.",
+        )
+    }
+}
+
+/// One thing the source offers to download for a result. Downloading is item 13.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RemoteOffer {
+    pub id: String,
+    /// `EPUB`, `FB2`, …
+    pub format: String,
+    /// `FB2` inside a zip.
+    pub zip: bool,
+    pub size: Option<u64>,
+    pub label: Option<String>,
+}
+
+/// A search result in the shape the screens draw. Everything in it has been checked against the
+/// contract by the service; `handle` is what the service needs to call the plugin about it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RemoteHit {
+    pub id: String,
+    pub title: String,
+    pub authors: Vec<String>,
+    pub description: Option<String>,
+    pub language: Option<String>,
+    pub year: Option<i32>,
+    pub isbn: Option<String>,
+    pub publisher: Option<String>,
+    pub series: Option<String>,
+    pub series_index: Option<f64>,
+    pub tags: Vec<String>,
+    pub cover_url: Option<String>,
+    pub page_url: Option<String>,
+    pub offers: Vec<RemoteOffer>,
+    /// The checked result itself. Empty for the fakes of tests.
+    pub handle: Option<Arc<SearchHit>>,
+}
+
+impl RemoteHit {
+    /// A result with a title and nothing else, for tests and for sources that give little.
+    pub fn titled(id: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            authors: Vec::new(),
+            description: None,
+            language: None,
+            year: None,
+            isbn: None,
+            publisher: None,
+            series: None,
+            series_index: None,
+            tags: Vec::new(),
+            cover_url: None,
+            page_url: None,
+            offers: Vec::new(),
+            handle: None,
+        }
+    }
+}
+
+impl From<SearchHit> for RemoteHit {
+    fn from(hit: SearchHit) -> Self {
+        Self {
+            id: hit.id.clone(),
+            title: hit.title.clone(),
+            authors: hit.authors.clone(),
+            description: hit.description.clone(),
+            language: hit.language.clone(),
+            year: hit.year,
+            isbn: hit.isbn.clone(),
+            publisher: hit.publisher.clone(),
+            series: hit.series.clone(),
+            series_index: hit.series_index,
+            tags: hit.tags.clone(),
+            cover_url: hit.cover_url.clone(),
+            page_url: hit.page_url.clone(),
+            offers: hit
+                .offers
+                .iter()
+                .map(|offer| RemoteOffer {
+                    id: offer.id.clone(),
+                    format: offer.format.label().to_owned(),
+                    zip: offer.archive.is_some(),
+                    size: offer.size,
+                    label: offer.label.clone(),
+                })
+                .collect(),
+            handle: Some(Arc::new(hit)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RemotePage {
+    pub hits: Vec<RemoteHit>,
+    /// What to pass back for the next page; `None` on the last one.
+    pub next_cursor: Option<String>,
+    /// Results the plugin sent that broke a limit and were left out (they are in the log).
+    pub dropped: usize,
+}
+
+/// Reads the words of a plugin failure. `host.fetch` failures that nobody caught arrive as
+/// "network error (kind): …"; a plugin that meets a bad status usually says "status 503".
+/// Neither is structured in the contract, so this is a reading of the text, and a plugin that
+/// words it otherwise is shown its own message.
+pub fn classify_plugin_message(message: &str) -> SourceErrorKind {
+    let lower = message.to_ascii_lowercase();
+    if ["connect", "timeout", "dns", "tls"]
+        .iter()
+        .any(|kind| lower.contains(&format!("network error ({kind})")))
+    {
+        return SourceErrorKind::Unreachable;
+    }
+    let mut previous = "";
+    for word in lower.split(|c: char| !c.is_ascii_alphanumeric()) {
+        if matches!(previous, "status" | "http" | "code")
+            && word.len() == 3
+            && word.starts_with('5')
+            && word.bytes().all(|b| b.is_ascii_digit())
+        {
+            return SourceErrorKind::Server;
+        }
+        if !word.is_empty() {
+            previous = word;
+        }
+    }
+    SourceErrorKind::Plugin
+}
+
+fn source_error(error: ferrolibri_core::Error) -> SourceError {
+    match error.kind {
+        ErrorKind::Cancelled => SourceError::cancelled(),
+        ErrorKind::Plugin { message, .. } => {
+            SourceError::new(classify_plugin_message(&message), message)
+        }
+        _ => SourceError::plugin(error.to_string()),
+    }
 }
 
 /// `17 Oct 2026` for seconds since 1970-01-01 UTC.
@@ -410,6 +596,7 @@ fn row(store: &PluginStore, plugin: InstalledPlugin) -> PluginRow {
                     settings: setting_fields(&manifest, &saved),
                     source: source_text(&install.source),
                     installed: format_date(install.installed_at),
+                    search_hint: manifest.search_hint.clone(),
                 }),
             }
         }
@@ -579,15 +766,41 @@ pub fn remote_problem(error: RemoteError, host: &str, release: bool) -> Problem 
     }
 }
 
-fn host_of(address: &str) -> String {
+/// `nas:8080` of `http://nas:8080/opds`.
+fn host_part(address: &str) -> Option<String> {
     address
         .trim()
         .split("://")
         .nth(1)
         .and_then(|rest| rest.split(['/', '?', '#']).next())
         .filter(|host| !host.is_empty())
-        .unwrap_or("the address")
-        .to_owned()
+        .map(str::to_owned)
+}
+
+fn host_of(address: &str) -> String {
+    host_part(address).unwrap_or_else(|| "the address".to_owned())
+}
+
+impl PluginRow {
+    /// Where the plugin is pointed: the host of the address the user saved for it, else the
+    /// first site its manifest names without a wildcard. `None` for a plugin that names none.
+    pub fn address_host(&self) -> Option<String> {
+        let info = self.info.as_ref()?;
+        let saved = info
+            .settings
+            .iter()
+            .find(|f| f.network && f.kind == FieldKind::Url && f.saved);
+        if let Some(FieldValue::Text(address)) = saved.map(|f| &f.value)
+            && let Some(host) = host_part(address)
+        {
+            return Some(host);
+        }
+        info.permissions
+            .domains
+            .iter()
+            .find(|domain| !domain.starts_with("*."))
+            .cloned()
+    }
 }
 
 /// The real plugin operations. Every method blocks; the caller runs them off the UI thread.
@@ -595,13 +808,18 @@ fn host_of(address: &str) -> String {
 pub struct PluginBackend {
     store: PluginStore,
     installer: RemoteInstaller,
+    /// Runs `search` and `details`. It shares its HTTP client, and so the per-host queues, with
+    /// the installer and with the covers.
+    runtime: PluginRuntime,
 }
 
 impl PluginBackend {
     pub fn new(store: PluginStore) -> Self {
+        let http = Http::new();
         Self {
             store,
-            installer: RemoteInstaller::new(Http::new()),
+            installer: RemoteInstaller::new(http.clone()),
+            runtime: PluginRuntime::new(http),
         }
     }
 
@@ -734,6 +952,103 @@ impl PluginBackend {
             turned_on: is_new && options.turn_on,
         })
     }
+
+    fn loaded(&self, id: &str) -> Result<LoadedPlugin, SourceError> {
+        self.store.load(id).map_err(|error| match error.kind {
+            ErrorKind::Plugin { message, .. } => {
+                SourceError::new(SourceErrorKind::Unavailable, capitalised(&message))
+            }
+            _ => SourceError::new(SourceErrorKind::Unavailable, error.to_string()),
+        })
+    }
+
+    /// One page of `search(query, ctx)`, checked against the contract. Blocks.
+    pub fn search(
+        &self,
+        id: &str,
+        query: &SearchQuery,
+        cancel: &CancellationToken,
+    ) -> Result<RemotePage, SourceError> {
+        let plugin = self.loaded(id)?;
+        let arg = serde_json::to_value(query).expect("a query always serializes");
+        let answer = self
+            .runtime
+            .call(&plugin, PluginFunction::Search, &arg, cancel)
+            .map_err(source_error)?;
+        let allow = plugin
+            .allow_list()
+            .map_err(|e| SourceError::plugin(e.to_string()))?;
+        let parsed = parse_search_page(&answer.to_string(), &|host| allow.allows_host(host))
+            .map_err(|e| unexpected_response(&e))?;
+        for warning in &parsed.warnings {
+            log::warn!(target: "plugin", "[{id}] {warning}");
+        }
+        Ok(RemotePage {
+            dropped: parsed.warnings.len(),
+            next_cursor: parsed.page.next_cursor,
+            hits: parsed.page.hits.into_iter().map(RemoteHit::from).collect(),
+        })
+    }
+
+    /// `details(hit, ctx)` merged into the result; a plugin without `details` changes nothing.
+    pub fn details(
+        &self,
+        id: &str,
+        hit: &RemoteHit,
+        cancel: &CancellationToken,
+    ) -> Result<RemoteHit, SourceError> {
+        let handle = hit
+            .handle
+            .as_ref()
+            .ok_or_else(|| SourceError::plugin("the result cannot be passed to the plugin"))?;
+        let plugin = self.loaded(id)?;
+        let arg = serde_json::to_value(handle.as_ref()).expect("a result always serializes");
+        let answer = self
+            .runtime
+            .call(&plugin, PluginFunction::Details, &arg, cancel)
+            .map_err(source_error)?;
+        let allow = plugin
+            .allow_list()
+            .map_err(|e| SourceError::plugin(e.to_string()))?;
+        let merged = handle
+            .with_details(&answer.to_string(), &|host| allow.allows_host(host))
+            .map_err(|e| unexpected_response(&e))?;
+        Ok(RemoteHit::from(merged))
+    }
+
+    /// The cover at `url` as bytes, fetched the way a plugin's own request would be: only
+    /// hosts the plugin may reach, at most [`MAX_COVER_BYTES`], any status but 2xx refused.
+    pub fn fetch_cover(
+        &self,
+        id: &str,
+        url: &str,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<u8>, String> {
+        let plugin = self.loaded(id).map_err(|e| e.message)?;
+        let allow = plugin.allow_list().map_err(|e| e.to_string())?;
+        let session = self
+            .runtime
+            .http()
+            .session(Identity::Plugin(id.to_owned()), allow, cancel.clone())
+            .with_request_budget(1);
+        let mut stream = session
+            .open(url, &[("Accept", "image/*")], MAX_COVER_BYTES)
+            .map_err(|e| e.to_string())?;
+        let status = stream.head().status;
+        if !stream.head().is_success() {
+            return Err(format!("the server answered {status}"));
+        }
+        stream.read_to_end().map_err(|e| e.to_string())
+    }
+}
+
+/// Largest cover that is downloaded for a result.
+pub const MAX_COVER_BYTES: u64 = 2 * 1024 * 1024;
+
+fn unexpected_response(error: &ferrolibri_plugins::ResponseError) -> SourceError {
+    SourceError::plugin(format!(
+        "plugin error: the plugin returned an unexpected response ({error})"
+    ))
 }
 
 #[cfg(test)]
@@ -821,6 +1136,67 @@ mod tests {
             remote_problem(from_release, "x", true).kind,
             ProblemKind::Checksum
         );
+    }
+
+    #[test]
+    fn plugin_failures_are_told_apart_by_their_words() {
+        use SourceErrorKind::{Plugin, Server, Unreachable};
+        for kind in ["connect", "timeout", "dns", "tls"] {
+            let message = format!("Network error ({kind}): no answer");
+            assert_eq!(classify_plugin_message(&message), Unreachable, "{message}");
+        }
+        for message in [
+            "The catalog answered with status 503",
+            "HTTP 502 from the mirror",
+            "bad status: 500",
+        ] {
+            assert_eq!(classify_plugin_message(message), Server, "{message}");
+        }
+        for message in [
+            "The catalog answered with status 404",
+            "network error (blocked_domain): host is not allowed",
+            "invoice 503 not found",
+            "plugin error: hits is missing",
+        ] {
+            assert_eq!(classify_plugin_message(message), Plugin, "{message}");
+        }
+    }
+
+    #[test]
+    fn a_row_names_the_host_it_is_pointed_at() {
+        let mut row = PluginRow {
+            id: "p".into(),
+            name: "P".into(),
+            version: "1".into(),
+            author: String::new(),
+            description: String::new(),
+            enabled: true,
+            health: Health::Ready,
+            info: Some(PluginInfo {
+                permissions: PermissionSummary {
+                    domains: vec!["*.cdn.test".into(), "books.test".into()],
+                    ..Default::default()
+                },
+                settings: vec![SettingField {
+                    key: "base".into(),
+                    label: "Address".into(),
+                    kind: FieldKind::Url,
+                    network: true,
+                    value: FieldValue::Text("http://nas:8080/opds".into()),
+                    placeholder: None,
+                    saved: false,
+                }],
+                source: String::new(),
+                installed: String::new(),
+                search_hint: None,
+            }),
+        };
+        // Not saved yet: the first plain site of the manifest.
+        assert_eq!(row.address_host().as_deref(), Some("books.test"));
+        row.info.as_mut().unwrap().settings[0].saved = true;
+        assert_eq!(row.address_host().as_deref(), Some("nas:8080"));
+        row.info = None;
+        assert_eq!(row.address_host(), None);
     }
 
     #[test]

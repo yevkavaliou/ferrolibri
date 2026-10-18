@@ -129,6 +129,15 @@ impl AllowList {
         Ok(())
     }
 
+    /// Whether `host` may be contacted at all. The scheme is not known here, so the host is
+    /// checked as for an `https` address; it is what `parse_search_page` and `merge_details`
+    /// ask about a `cover_url`. The full address is checked again when it is fetched.
+    pub fn allows_host(&self, host: &str) -> bool {
+        Url::parse(&format!("https://{host}/"))
+            .ok()
+            .is_some_and(|url| self.check(&url).is_ok())
+    }
+
     /// Checks scheme, credentials and host of `url`; called for the first URL and for every
     /// redirect target. Failures are `BlockedDomain`.
     pub fn check(&self, url: &Url) -> Result<Access, HostError> {
@@ -239,6 +248,21 @@ mod tests {
         assert!(blocked(&list, "https://cdn.example.net/").contains("not in the list"));
         assert!(blocked(&list, "https://evilexample.org/").contains("not in the list"));
         assert!(blocked(&list, "https://example.org.evil.com/").contains("not in the list"));
+    }
+
+    #[test]
+    fn a_host_is_asked_about_without_its_scheme() {
+        let list = manifest_list(&["example.org", "*.cdn.example.net"]);
+        assert!(list.allows_host("example.org"));
+        assert!(list.allows_host("a.cdn.example.net"));
+        assert!(!list.allows_host("cdn.example.net"));
+        assert!(!list.allows_host("evil.test"));
+        assert!(!list.allows_host("not a host"));
+        // An address typed by the user opens its host and subdomains, whatever the port.
+        let entered = entered_list("http://nas.local:8080/opds");
+        assert!(entered.allows_host("nas.local"));
+        assert!(entered.allows_host("img.nas.local"));
+        assert!(!entered.allows_host("example.org"));
     }
 
     #[test]

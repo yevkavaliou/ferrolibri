@@ -5,6 +5,7 @@ pub mod icons;
 pub mod keymap;
 pub mod palette;
 pub mod plugins;
+pub mod remote;
 pub mod response_guard;
 pub mod selection;
 pub mod services;

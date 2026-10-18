@@ -11,7 +11,7 @@ use iced::{
 pub fn id() -> iced::widget::Id {
     iced::widget::Id::new("home-books")
 }
-fn format_tags<'a>(state: &State, labels: &'a str) -> Element<'a, Message> {
+pub(super) fn format_tags<'a>(state: &State, labels: &str) -> Element<'a, Message> {
     let labels_vec: Vec<_> = labels
         .split(" · ")
         .filter(|label| !label.is_empty())
@@ -24,7 +24,7 @@ fn format_tags<'a>(state: &State, labels: &'a str) -> Element<'a, Message> {
     let mut tags = row![].spacing(3).align_y(Alignment::Center);
     for label in &labels_vec[..visible] {
         tags = tags.push(
-            container(text(*label).size(theme::font(state, 10.0)))
+            container(text(label.to_string()).size(theme::font(state, 10.0)))
                 .padding([1, 4])
                 .style(theme::format_tag),
         );
@@ -38,7 +38,7 @@ fn format_tags<'a>(state: &State, labels: &'a str) -> Element<'a, Message> {
     }
     super::tip(
         container(tags).width(84),
-        text(labels).size(theme::font(state, 12.0)),
+        text(labels.to_owned()).size(theme::font(state, 12.0)),
         super::Position::Top,
     )
 }
@@ -193,15 +193,25 @@ pub fn view(state: &State) -> Element<'_, Message> {
                 .on_press(Message::ShowGrid),
         );
     let header: Element<'_, Message> = if search {
+        let field = text_input("Search by title or author", &state.search_query)
+            .id(crate::app::search_id())
+            .on_input(Message::SearchChanged)
+            .on_submit(Message::SearchSubmit)
+            .padding([6, 10])
+            .size(theme::font(state, 13.0))
+            .style(theme::input)
+            .width(Fill);
+        // With a plugin installed, the switch of the source stands left of the field.
+        let bar: Element<'_, Message> = match super::remote::switcher(state) {
+            Some(switch) => row![switch, field]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into(),
+            None => field.into(),
+        };
         container(
             column![
-                text_input("Search by title or author", &state.search_query)
-                    .id(crate::app::search_id())
-                    .on_input(Message::SearchChanged)
-                    .on_submit(Message::SearchSubmit)
-                    .padding([6, 10])
-                    .size(theme::font(state, 13.0))
-                    .style(theme::input),
+                bar,
                 text(format!("{} results", state.search_order.len()))
                     .size(theme::font(state, 12.0))
                     .color(theme::DARK.text_muted)

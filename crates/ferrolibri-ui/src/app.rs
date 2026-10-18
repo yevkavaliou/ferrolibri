@@ -135,6 +135,7 @@ pub struct State {
     scroll_last: Option<std::time::Instant>,
     pub blur: crate::blur::BlurState,
     pub plugins: crate::plugins::PluginsState,
+    pub remote: crate::remote::RemoteState,
 }
 impl State {
     pub fn row_height(&self) -> f32 {
@@ -400,6 +401,7 @@ pub enum Message {
     FolderPicked(Result<Option<PathBuf>, String>),
     Close(iced::window::Id),
     Plugins(crate::plugins::Msg),
+    Remote(crate::remote::Msg),
 }
 
 pub fn update(state: &mut State, message: Message, services: &dyn Services) -> Task<Message> {
@@ -459,7 +461,8 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             }
         }
         Message::StartDetailsResize
-            if matches!(state.screen, Screen::Home { .. }) && !state.closing =>
+            if (matches!(state.screen, Screen::Home { .. }) || crate::remote::is_remote(state))
+                && !state.closing =>
         {
             state.details_drag = Some((state.pointer_x, state.details_width()));
         }
@@ -1168,9 +1171,16 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                     state.notices.push(error);
                 }
             }
+            // The plugins are read at the start, so the source saved last time is known
+            // (and the switch is there) before the Search screen is opened.
+            let plugins = crate::plugins::reload(state, services);
             if let Some(settings) = state.pending_settings.take() {
-                return update(state, Message::SaveSettings(settings), services);
+                return Task::batch([
+                    plugins,
+                    update(state, Message::SaveSettings(settings), services),
+                ]);
             }
+            return plugins;
         }
         Message::SaveSettings(mut settings) => {
             settings.normalize();
@@ -1223,7 +1233,8 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             return update(state, Message::SaveSettings(settings), services);
         }
         Message::ToggleDetails
-            if matches!(state.screen, Screen::Home { .. }) && !state.library_loading =>
+            if (matches!(state.screen, Screen::Home { .. }) || crate::remote::is_remote(state))
+                && !state.library_loading =>
         {
             let mut settings = state.visible_settings().clone();
             settings.details_visible = !settings.details_visible;
@@ -1231,6 +1242,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         }
         Message::ToggleSidebar | Message::ToggleDetails => {}
         Message::Plugins(msg) => return crate::plugins::update(state, msg, services),
+        Message::Remote(msg) => return crate::remote::update(state, msg, services),
         Message::Navigate(screen) => {
             let to_settings = screen == Screen::Settings;
             if screen == Screen::Search && matches!(state.screen, Screen::Home { .. }) {
@@ -1248,9 +1260,11 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                 return Task::batch([scroll, crate::plugins::reload(state, services)]);
             }
             if state.screen == Screen::Search {
+                // The plugins may have been turned off or removed since Search was last open.
                 return Task::batch([
                     scroll,
                     start_search(state),
+                    crate::plugins::reload(state, services),
                     iced::widget::operation::focus(search_id()),
                 ]);
             }
@@ -1432,6 +1446,9 @@ fn next_library_generation(state: &mut State) -> u64 {
     state.library_generation
 }
 fn load_visible_covers(state: &mut State, services: &dyn Services) -> Task<Message> {
+    if crate::remote::is_remote(state) {
+        return crate::remote::request_covers(state, services);
+    }
     let mut wanted = if matches!(state.screen, Screen::Home { .. } | Screen::Search)
         && state.scan_status == ScanStatus::Ready
         && !state.show_warnings
@@ -1490,7 +1507,7 @@ fn load_visible_covers(state: &mut State, services: &dyn Services) -> Task<Messa
 pub fn search_id() -> iced::widget::Id {
     iced::widget::Id::new("search-query")
 }
-fn reset_list_scroll() -> Task<Message> {
+pub(crate) fn reset_list_scroll() -> Task<Message> {
     iced::widget::operation::scroll_to(
         crate::widgets::book_list::id(),
         iced::widget::scrollable::AbsoluteOffset { x: 0.0, y: 0.0 },
@@ -1628,6 +1645,9 @@ fn key_context(state: &State) -> keymap::Context {
             Screen::Home { .. } => Pane::Library {
                 grid: state.visible_settings().view == crate::settings::ViewMode::Grid,
             },
+            Screen::Search if crate::remote::is_remote(state) => Pane::Remote {
+                grid: state.remote.grid,
+            },
             Screen::Search => Pane::Search,
             _ => Pane::Other,
         }
@@ -1683,7 +1703,24 @@ fn run_command(
 ) -> Task<Message> {
     use keymap::Command;
     let lists = matches!(state.screen, Screen::Home { .. } | Screen::Search);
+    // A plugin's results are not books of the library: they have their own selection.
+    if crate::remote::is_remote(state) {
+        match command {
+            Command::Move { motion, .. } => {
+                return crate::remote::key_move(state, motion, services);
+            }
+            Command::OpenDetails => return crate::remote::key_open(state, services),
+            Command::SelectAll | Command::Send | Command::ToggleConvert => return Task::none(),
+            _ => {}
+        }
+    }
     match command {
+        Command::CycleSource { backwards } if state.screen == Screen::Search => update(
+            state,
+            Message::Remote(crate::remote::Msg::CycleSource { backwards }),
+            services,
+        ),
+        Command::CycleSource { .. } => Task::none(),
         Command::OpenSearch if state.screen == Screen::Search => {
             iced::widget::operation::focus(search_id())
         }
@@ -1802,10 +1839,14 @@ fn selection_changed(state: &mut State, services: &dyn Services) -> Task<Message
     }
 }
 /// Whether the grid is shown, its column count, and the row height.
-fn layout_metrics(state: &State) -> (bool, usize, f32) {
-    if state.screen != Screen::Search
-        && state.visible_settings().view == crate::settings::ViewMode::Grid
-    {
+pub(crate) fn layout_metrics(state: &State) -> (bool, usize, f32) {
+    let grid = if crate::remote::is_remote(state) {
+        state.remote.grid
+    } else {
+        state.screen != Screen::Search
+            && state.visible_settings().view == crate::settings::ViewMode::Grid
+    };
+    if grid {
         let geometry = crate::widgets::book_grid::Geometry::for_state(state);
         (
             true,
@@ -1868,7 +1909,7 @@ fn move_cursor(
     ])
 }
 /// Scroll just enough to bring the row or card holding `index` into view.
-fn scroll_to_index(state: &mut State, index: usize) -> Task<Message> {
+pub(crate) fn scroll_to_index(state: &mut State, index: usize) -> Task<Message> {
     let (_, columns, row_height) = layout_metrics(state);
     let top = (index / columns) as f32 * row_height;
     let height = state.list_height.max(row_height);
@@ -2294,6 +2335,8 @@ pub fn view(state: &State) -> Element<'_, Message> {
         .into()
     } else if state.screen == Screen::Jobs {
         crate::widgets::jobs::view(state)
+    } else if crate::remote::is_remote(state) {
+        crate::widgets::remote::view(state)
     } else if state.screen == Screen::Search {
         crate::widgets::book_list::view(state)
     } else if state.screen == Screen::Settings {

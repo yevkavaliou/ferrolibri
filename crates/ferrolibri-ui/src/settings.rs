@@ -37,6 +37,9 @@ pub struct UiSettings {
     pub window_blur: bool,
     pub prefer_kepub: bool,
     pub export_folder: Option<PathBuf>,
+    /// The search plugin chosen on the Search screen, by id; none means the library.
+    /// A plugin that is gone or off is dropped when the plugin list is read.
+    pub search_source: Option<String>,
 }
 impl Default for UiSettings {
     fn default() -> Self {
@@ -53,6 +56,7 @@ impl Default for UiSettings {
             window_blur: true,
             prefer_kepub: true,
             export_folder: None,
+            search_source: None,
         }
     }
 }
@@ -111,6 +115,7 @@ mod tests {
             details_width: 420,
             sidebar_width: 240,
             library_expanded: true,
+            search_source: Some("standard-ebooks".into()),
         };
         settings.save_to(&path).unwrap();
         assert_eq!(UiSettings::load_from(&path).unwrap(), settings);
@@ -137,6 +142,7 @@ mod tests {
         assert_eq!(settings.details_width, 300);
         assert_eq!(settings.sidebar_width, 188);
         assert!(!settings.library_expanded);
+        assert_eq!(settings.search_source, None, "the library is the default");
     }
     #[test]
     fn malformed_appearance_ranges_are_bounded_on_load() {

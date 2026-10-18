@@ -245,6 +245,8 @@ pub fn update(state: &mut State, msg: Msg, services: &dyn Services) -> Task<Mess
                     state.plugins.loaded = true;
                     state.plugins.error = None;
                     settle(&mut state.plugins);
+                    // The Search screen follows the list: a source that is gone is dropped.
+                    return crate::remote::reconcile(state, services);
                 }
                 Err(message) => state.plugins.error = Some(message),
             }

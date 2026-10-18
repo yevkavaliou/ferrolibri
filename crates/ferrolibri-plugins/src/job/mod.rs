@@ -139,7 +139,7 @@ impl DownloadAndAdd {
             &offer,
             cancel,
         )?;
-        let allowed = |host: &str| host_allowed(allow, host);
+        let allowed = |host: &str| allow.allows_host(host);
         parse_download_spec(&answer.to_string(), &self.offer, &allowed)
             .map_err(|e| e.into_core("plugin resolveDownload", &self.plugin.manifest.id))
     }
@@ -310,14 +310,6 @@ impl ExternalJob for DownloadAndAdd {
             }
         }
     }
-}
-
-/// Whether the plugin's allow-list lets `host` through. The scheme is not known here (the
-/// answer is checked as a host only); the download checks the whole address again.
-fn host_allowed(allow: &AllowList, host: &str) -> bool {
-    Url::parse(&format!("https://{host}/"))
-        .ok()
-        .is_some_and(|url| allow.check(&url).is_ok())
 }
 
 fn calibre_missing() -> Error {

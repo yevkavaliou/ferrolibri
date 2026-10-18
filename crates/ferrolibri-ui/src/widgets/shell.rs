@@ -18,7 +18,9 @@ pub struct Layout {
 impl Layout {
     pub fn for_state(state: &State) -> Self {
         let setup = state.screen == Screen::Setup || state.library_loading;
-        let details_available = !setup && matches!(state.screen, Screen::Home { .. });
+        // Home has the details of a book; Search has them for the result of a plugin.
+        let details_available = !setup
+            && (matches!(state.screen, Screen::Home { .. }) || crate::remote::is_remote(state));
         Self {
             sidebar: !setup && state.visible_settings().sidebar_visible,
             sidebar_width: state.sidebar_width(),
@@ -341,7 +343,13 @@ fn details(state: &State) -> Element<'_, Message> {
         theme::DARK.panel
     };
     let dragging = state.details_drag.is_some();
-    let tint = state.cover_colors().map(|colors| colors.tint);
+    let remote = crate::remote::is_remote(state);
+    // A result of a plugin has no cover colours of its own: the library's selection is not it.
+    let tint = if remote {
+        None
+    } else {
+        state.cover_colors().map(|colors| colors.tint)
+    };
     row![
         // The whole grip stays draggable; only a 1 px line is drawn (a 0.5 px quad
         // on a fractional position vanishes), 2 px in the accent colour while dragging.
@@ -367,18 +375,22 @@ fn details(state: &State) -> Element<'_, Message> {
         )
         .interaction(iced::mouse::Interaction::ResizingHorizontally)
         .on_press(Message::StartDetailsResize),
-        container(super::details::view(state))
-            .padding([14, 12])
-            .width(Fill)
-            .height(Fill)
-            .style(move |theme| match tint {
-                Some(tint) => theme::tinted_panel(tint, panel, alpha)(theme),
-                None => {
-                    let mut style = theme::panel(theme);
-                    style.background = Some(panel.scale_alpha(alpha).into());
-                    style
-                }
-            })
+        container(if remote {
+            super::remote::details(state)
+        } else {
+            super::details::view(state)
+        })
+        .padding([14, 12])
+        .width(Fill)
+        .height(Fill)
+        .style(move |theme| match tint {
+            Some(tint) => theme::tinted_panel(tint, panel, alpha)(theme),
+            None => {
+                let mut style = theme::panel(theme);
+                style.background = Some(panel.scale_alpha(alpha).into());
+                style
+            }
+        })
     ]
     .width(state.details_width() + theme::DETAILS_GRIP)
     .height(Fill)

@@ -4,6 +4,7 @@ pub mod convert;
 pub mod device_bar;
 pub mod jobs;
 pub mod plugins;
+pub mod remote;
 pub mod settings;
 pub mod shell;
 pub mod toasts;

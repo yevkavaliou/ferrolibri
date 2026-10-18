@@ -53,19 +53,83 @@ pub fn load(id: &BookId, book: &Path, cache: &Path) -> Result<Option<Handle>, St
     }
     Ok(Some(handle(pixels)))
 }
+fn limits() -> image::Limits {
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(12_000);
+    limits.max_image_height = Some(12_000);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    limits
+}
 fn read(path: &Path) -> Result<image::DynamicImage, String> {
     let mut reader = image::ImageReader::open(path)
         .map_err(|e| format!("{}: {e}", path.display()))?
         .with_guessed_format()
         .map_err(|e| e.to_string())?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(12_000);
-    limits.max_image_height = Some(12_000);
-    limits.max_alloc = Some(64 * 1024 * 1024);
-    reader.limits(limits);
+    reader.limits(limits());
     reader
         .decode()
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+/// How many thumbnails of remote covers the disk cache keeps; the oldest go first.
+pub const REMOTE_CACHE_FILES: usize = 1000;
+/// The cache file of a remote cover: named after its address, so a new address is a new file.
+fn remote_path(cache: &Path, url: &str) -> PathBuf {
+    let key = format!("{:x}", Sha256::digest(format!("v1-{WIDTH}-{HEIGHT}|{url}")));
+    cache.join(format!("{key}.png"))
+}
+/// The thumbnail of the cover at `url`. A cached one is used without asking the network;
+/// otherwise `fetch` gets the bytes, which are checked as an image and cached as a thumbnail.
+pub fn load_remote(
+    url: &str,
+    cache: &Path,
+    fetch: impl FnOnce() -> Result<Vec<u8>, String>,
+) -> Result<Handle, String> {
+    let path = remote_path(cache, url);
+    if let Ok(pixels) = decode(&path) {
+        return Ok(handle(pixels));
+    }
+    let bytes = fetch()?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| e.to_string())?;
+    reader.limits(limits());
+    let pixels = reader
+        .decode()
+        .map_err(|e| format!("not a usable image: {e}"))?
+        .thumbnail(WIDTH, HEIGHT)
+        .into_rgba8();
+    let mut png = std::io::Cursor::new(Vec::new());
+    if image::DynamicImage::ImageRgba8(pixels.clone())
+        .write_to(&mut png, image::ImageFormat::Png)
+        .is_ok()
+    {
+        match ferrolibri_core::config::write_atomic(&path, png.get_ref()) {
+            Ok(()) => prune(cache, REMOTE_CACHE_FILES),
+            Err(error) => log::warn!("Could not cache cover {}: {error}", path.display()),
+        }
+    }
+    Ok(handle(pixels))
+}
+/// Keeps at most `keep` files in `dir`: when there are more, the oldest tenth goes too.
+fn prune(dir: &Path, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<_> = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((modified, entry.path()))
+        })
+        .collect();
+    if files.len() <= keep {
+        return;
+    }
+    files.sort();
+    let surplus = files.len() - keep + keep / 10;
+    for (_, path) in files.into_iter().take(surplus) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 fn decode(path: &Path) -> Result<image::RgbaImage, String> {
     read(path).map(|image| image.thumbnail(WIDTH, HEIGHT).into_rgba8())
@@ -245,6 +309,73 @@ mod tests {
         assert_eq!(cache.next_requests().len(), CONCURRENCY);
         cache.clear();
         assert_eq!(cache.running.len(), CONCURRENCY);
+    }
+    fn jpeg_bytes() -> Vec<u8> {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            400,
+            600,
+            image::Rgb([9, 99, 9]),
+        ))
+        .write_to(&mut bytes, image::ImageFormat::Jpeg)
+        .unwrap();
+        bytes.into_inner()
+    }
+    #[test]
+    fn a_remote_cover_is_fetched_once_and_then_read_from_the_disk_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = temp.path().join("remote");
+        let url = "https://example.org/cover.jpg";
+        let fetched = std::cell::Cell::new(0);
+        let fetch = || {
+            fetched.set(fetched.get() + 1);
+            Ok(jpeg_bytes())
+        };
+        assert!(load_remote(url, &cache, fetch).is_ok());
+        assert_eq!(fetched.get(), 1);
+        let cached: Vec<_> = std::fs::read_dir(&cache).unwrap().collect();
+        assert_eq!(cached.len(), 1);
+        // The second time the network is not asked, and a different address is a new file.
+        assert!(load_remote(url, &cache, || panic!("cached")).is_ok());
+        assert!(load_remote("https://example.org/other.jpg", &cache, || Ok(jpeg_bytes())).is_ok());
+        assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 2);
+    }
+    #[test]
+    fn a_remote_cover_that_is_not_an_image_or_cannot_be_fetched_is_an_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache = temp.path().join("remote");
+        let page = b"<html>nothing to see</html>".to_vec();
+        let error = load_remote("https://example.org/a", &cache, || Ok(page)).unwrap_err();
+        assert!(error.contains("not a usable image"), "{error}");
+        let error = load_remote("https://example.org/b", &cache, || {
+            Err("the server answered 404".into())
+        })
+        .unwrap_err();
+        assert!(error.contains("404"));
+        assert!(!cache.exists(), "nothing is cached for a failure");
+    }
+    #[test]
+    fn the_remote_cache_drops_its_oldest_files_beyond_the_limit() {
+        let temp = tempfile::tempdir().unwrap();
+        for index in 0..12 {
+            let path = temp.path().join(format!("{index}.png"));
+            std::fs::write(&path, b"x").unwrap();
+            let age = std::time::Duration::from_secs(100 - index);
+            let file = std::fs::File::options().write(true).open(&path).unwrap();
+            file.set_modified(std::time::SystemTime::now() - age)
+                .unwrap();
+        }
+        prune(temp.path(), 10);
+        // Twelve files with a limit of ten: the two surplus ones and one more (a tenth) go.
+        let mut left: Vec<_> = std::fs::read_dir(temp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left.len(), 9);
+        assert!(!left.contains(&"0.png".to_string()) && left.contains(&"11.png".to_string()));
+        prune(temp.path(), 10);
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 9);
     }
     #[test]
     fn oversized_images_are_rejected_before_large_decode() {

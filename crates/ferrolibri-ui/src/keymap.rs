@@ -19,6 +19,10 @@ pub enum Pane {
         grid: bool,
     },
     Search,
+    /// Search showing the results of a plugin; the list is theirs, not the library's.
+    Remote {
+        grid: bool,
+    },
     /// Jobs and Settings.
     Other,
 }
@@ -61,6 +65,10 @@ pub enum Command {
     Focus {
         backwards: bool,
     },
+    /// Ctrl+Tab / Ctrl+Shift+Tab: the next (previous) source of the Search screen.
+    CycleSource {
+        backwards: bool,
+    },
 }
 /// Shortcuts shown in tooltips; the modifier is Ctrl, or ⌘ on macOS.
 pub fn modifier_label() -> &'static str {
@@ -82,6 +90,7 @@ pub fn hint(command: Command) -> String {
         Command::Escape => "Esc".into(),
         Command::Move { .. } => "↑ ↓".into(),
         Command::Focus { .. } => "Tab".into(),
+        Command::CycleSource { .. } => format!("{}Tab", modifier_label()),
     }
 }
 /// `"Label (hint)"`, the form used by every tooltip.
@@ -125,6 +134,13 @@ pub fn resolve(
         return (!command_key && !modifiers.alt()).then_some(Command::Escape);
     }
     if matches!(key, Key::Named(Named::Tab)) {
+        if command_key && !modifiers.alt() {
+            return (!context.overlay
+                && matches!(context.pane, Pane::Search | Pane::Remote { .. }))
+            .then_some(Command::CycleSource {
+                backwards: modifiers.shift(),
+            });
+        }
         return (plain).then_some(Command::Focus {
             backwards: modifiers.shift(),
         });
@@ -132,14 +148,20 @@ pub fn resolve(
     if context.overlay || context.pane == Pane::Setup {
         return None;
     }
-    let lists = matches!(context.pane, Pane::Library { .. } | Pane::Search);
+    // Library results and a plugin's results both move with the arrow keys and open with Enter.
+    let lists = matches!(
+        context.pane,
+        Pane::Library { .. } | Pane::Search | Pane::Remote { .. }
+    );
+    let library_lists = matches!(context.pane, Pane::Library { .. } | Pane::Search);
     if command_key && !modifiers.alt() && !modifiers.shift() {
         return if letter(key, physical, 'b', Code::KeyB) {
             Some(Command::ToggleSidebar)
         } else if letter(key, physical, 'i', Code::KeyI) {
-            matches!(context.pane, Pane::Library { .. }).then_some(Command::ToggleDetails)
+            matches!(context.pane, Pane::Library { .. } | Pane::Remote { .. })
+                .then_some(Command::ToggleDetails)
         } else if letter(key, physical, 'a', Code::KeyA) {
-            (lists && !context.warnings).then_some(Command::SelectAll)
+            (library_lists && !context.warnings).then_some(Command::SelectAll)
         } else {
             None
         };
@@ -162,7 +184,7 @@ pub fn resolve(
             extend: modifiers.shift(),
         });
     }
-    if modifiers.shift() {
+    if modifiers.shift() || !library_lists {
         return None;
     }
     if letter(key, physical, 't', Code::KeyT) {
@@ -516,8 +538,91 @@ mod tests {
                 run(tab(), code(Code::Tab), Modifiers::SHIFT, &ctx),
                 Some(Command::Focus { backwards: true })
             );
+            // Ctrl+Tab changes the source of Search, so it means nothing anywhere else.
+            let cycles = matches!(ctx.pane, Pane::Search) && !ctx.overlay;
+            assert_eq!(
+                run(tab(), code(Code::Tab), Modifiers::CTRL, &ctx),
+                cycles.then_some(Command::CycleSource { backwards: false }),
+                "{ctx:?}"
+            );
+        }
+    }
+    const REMOTE: Context = Context {
+        pane: Pane::Remote { grid: false },
+        overlay: false,
+        warnings: false,
+    };
+    #[test]
+    fn ctrl_tab_changes_the_source_of_search_only() {
+        let tab = || named(Named::Tab);
+        for ctx in [SEARCH, REMOTE] {
+            assert_eq!(
+                run(tab(), code(Code::Tab), Modifiers::CTRL, &ctx),
+                Some(Command::CycleSource { backwards: false })
+            );
+            assert_eq!(
+                run(
+                    tab(),
+                    code(Code::Tab),
+                    Modifiers::CTRL | Modifiers::SHIFT,
+                    &ctx
+                ),
+                Some(Command::CycleSource { backwards: true })
+            );
+        }
+        for ctx in [LIST, GRID, OTHER, SETUP] {
             assert_eq!(run(tab(), code(Code::Tab), Modifiers::CTRL, &ctx), None);
         }
+        let open = Context {
+            overlay: true,
+            ..REMOTE
+        };
+        assert_eq!(run(tab(), code(Code::Tab), Modifiers::CTRL, &open), None);
+        assert_eq!(
+            tip("Next source", Command::CycleSource { backwards: false }),
+            format!("Next source ({}Tab)", modifier_label())
+        );
+    }
+    #[test]
+    fn a_plugins_results_move_and_open_like_the_library_but_do_not_send_or_convert() {
+        let none = Modifiers::empty();
+        assert_eq!(
+            run(
+                named(Named::ArrowDown),
+                code(Code::ArrowDown),
+                none,
+                &REMOTE
+            ),
+            mv(Motion::Down, false)
+        );
+        assert_eq!(
+            run(named(Named::Home), code(Code::Home), none, &REMOTE),
+            mv(Motion::Home, false)
+        );
+        assert_eq!(
+            run(named(Named::Enter), code(Code::Enter), none, &REMOTE),
+            Some(Command::OpenDetails)
+        );
+        assert_eq!(
+            run(ch("/"), code(Code::Slash), none, &REMOTE),
+            Some(Command::OpenSearch)
+        );
+        // Nothing of the library applies to a list of web results.
+        assert_eq!(run(ch("t"), code(Code::KeyT), none, &REMOTE), None);
+        assert_eq!(run(ch("c"), code(Code::KeyC), none, &REMOTE), None);
+        assert_eq!(
+            run(ch("a"), code(Code::KeyA), Modifiers::CTRL, &REMOTE),
+            None
+        );
+        // The details pane can be hidden, as in the library.
+        assert_eq!(
+            run(ch("i"), code(Code::KeyI), Modifiers::CTRL, &REMOTE),
+            Some(Command::ToggleDetails)
+        );
+        assert_eq!(
+            run(ch("i"), code(Code::KeyI), Modifiers::CTRL, &SEARCH),
+            None
+        );
     }
     #[test]
     fn hints_use_the_platform_modifier() {

@@ -215,6 +215,7 @@ fn plugin(id: &str, name: &str, version: &str) -> PluginRow {
             settings: Vec::new(),
             source: "GitHub · janedoe/ferrolibri-standard-ebooks · v1.0.0".into(),
             installed: "17 Oct 2026".into(),
+            search_hint: None,
         }),
     }
 }

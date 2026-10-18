@@ -168,6 +168,41 @@ pub trait Services: Send + Sync {
     ) -> ServiceFuture<()> {
         Box::pin(async { Err("Plugins are unavailable".into()) })
     }
+    /// One page of results from a search plugin. The first page has no cursor; the next one
+    /// passes the `next_cursor` of the previous page. Cancelling `cancel` ends the call.
+    fn search_plugin(
+        &self,
+        _id: String,
+        _text: String,
+        _page: u32,
+        _cursor: Option<String>,
+        _cancel: CancellationToken,
+    ) -> plugins::SourceFuture<plugins::RemotePage> {
+        Box::pin(async { Err(plugins::SourceError::unavailable()) })
+    }
+    /// The plugin's `details` for a result, merged into it.
+    fn plugin_details(
+        &self,
+        _id: String,
+        _hit: plugins::RemoteHit,
+        _cancel: CancellationToken,
+    ) -> plugins::SourceFuture<plugins::RemoteHit> {
+        Box::pin(async { Err(plugins::SourceError::unavailable()) })
+    }
+    /// A cover by address, through the plugin's own network rules, cached on disk.
+    /// `Err` is a reason for the log; the screen draws a placeholder either way.
+    fn load_remote_cover(
+        &self,
+        _id: String,
+        _url: String,
+        _cancel: CancellationToken,
+    ) -> ServiceFuture<iced::widget::image::Handle> {
+        Box::pin(async { Err("Covers of plugins are unavailable".into()) })
+    }
+    /// Opens a web page in the user's browser. Only `http` and `https` addresses.
+    fn open_url(&self, url: String) -> ServiceFuture<()> {
+        blocking(move || open_web_address(&url))
+    }
     fn scan(&self, library: PathBuf) -> JobId {
         self.enqueue("Scan library".into(), JobRequest::Scan { library })
     }
@@ -391,6 +426,37 @@ fn blocking<T: Send + 'static>(
             .map_err(|e| e.to_string())?
     })
 }
+fn blocking_source<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, plugins::SourceError> + Send + 'static,
+) -> plugins::SourceFuture<T> {
+    Box::pin(async move {
+        tokio::task::spawn_blocking(f)
+            .await
+            .map_err(|e| plugins::SourceError::plugin(e.to_string()))?
+    })
+}
+/// Hands an `http(s)` address to the system, which opens it in the default browser. The
+/// address comes from a plugin, so it is checked here again and passed as one argument,
+/// never through a shell.
+fn open_web_address(url: &str) -> Result<(), String> {
+    let lower = url.trim().to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://"))
+        || url.chars().any(char::is_control)
+    {
+        return Err("Only web addresses can be opened.".into());
+    }
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+    command
+        .arg(url.trim())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
 fn blocking_plugin<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, plugins::Problem> + Send + 'static,
 ) -> plugins::PluginFuture<T> {
@@ -553,6 +619,41 @@ impl Services for RealServices {
     ) -> ServiceFuture<()> {
         let backend = self.plugins.clone();
         blocking(move || backend.save_settings(&id, &values))
+    }
+    fn search_plugin(
+        &self,
+        id: String,
+        text: String,
+        page: u32,
+        cursor: Option<String>,
+        cancel: CancellationToken,
+    ) -> plugins::SourceFuture<plugins::RemotePage> {
+        let backend = self.plugins.clone();
+        blocking_source(move || {
+            let query = ferrolibri_plugins::SearchQuery { text, page, cursor };
+            backend.search(&id, &query, &cancel)
+        })
+    }
+    fn plugin_details(
+        &self,
+        id: String,
+        hit: plugins::RemoteHit,
+        cancel: CancellationToken,
+    ) -> plugins::SourceFuture<plugins::RemoteHit> {
+        let backend = self.plugins.clone();
+        blocking_source(move || backend.details(&id, &hit, &cancel))
+    }
+    fn load_remote_cover(
+        &self,
+        id: String,
+        url: String,
+        cancel: CancellationToken,
+    ) -> ServiceFuture<iced::widget::image::Handle> {
+        let backend = self.plugins.clone();
+        let cache = self.cover_cache_path.join("remote");
+        blocking(move || {
+            covers::load_remote(&url, &cache, || backend.fetch_cover(&id, &url, &cancel))
+        })
     }
 }
 
