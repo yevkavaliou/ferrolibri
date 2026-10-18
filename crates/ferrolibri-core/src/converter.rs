@@ -244,6 +244,14 @@ impl ProcessRunner for SystemRunner {
         let stdout = std::fs::File::create(&stdout_path)?;
         let stderr = std::fs::File::create(&stderr_path)?;
         command.stdin(Stdio::null()).stdout(stdout).stderr(stderr);
+        // The GUI has no console of its own, so a console program (calibredb,
+        // ebook-convert, kepubify) would open and close a window of its own.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
         let spawned = command.spawn();
         // Command retains its Stdio handles after spawn (also on spawn failure).
         command.stdout(Stdio::null()).stderr(Stdio::null());
