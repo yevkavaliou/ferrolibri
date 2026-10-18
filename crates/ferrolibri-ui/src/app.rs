@@ -101,6 +101,7 @@ pub struct State {
     pub covers: crate::services::covers::CoverCache,
     pub viewport_width: f32,
     pub window_width: f32,
+    pub window_height: f32,
     pub pointer_x: f32,
     pub pointer_y: f32,
     pub details_drag: Option<(f32, f32)>,
@@ -466,7 +467,10 @@ pub fn style(state: &State, _: &iced::Theme) -> iced::theme::Style {
 }
 fn update_inner(state: &mut State, message: Message, services: &dyn Services) -> Task<Message> {
     match message {
-        Message::WindowResized(size) => state.window_width = size.width,
+        Message::WindowResized(size) => {
+            state.window_width = size.width;
+            state.window_height = size.height;
+        }
         Message::PointerMoved(x) => {
             state.pointer_x = x;
             if let Some((start, width)) = state.details_drag {

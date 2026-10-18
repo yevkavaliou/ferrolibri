@@ -94,9 +94,71 @@ impl UiSettings {
     }
 }
 
+pub const WINDOW_MIN_SIZE: (f32, f32) = (760.0, 520.0);
+pub const WINDOW_DEFAULT_SIZE: (f32, f32) = (1100.0, 700.0);
+const WINDOW_MAX_SIDE: f32 = 16_384.0;
+
+/// The window size remembered between launches. It lives in its own file, `window.toml`
+/// next to `ui.toml`, so resizing never goes through the UI settings save queue.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WindowSize {
+    pub width: f32,
+    pub height: f32,
+}
+impl Default for WindowSize {
+    fn default() -> Self {
+        Self {
+            width: WINDOW_DEFAULT_SIZE.0,
+            height: WINDOW_DEFAULT_SIZE.1,
+        }
+    }
+}
+impl WindowSize {
+    /// `None` when the size is not a usable number (the window has not been measured yet).
+    pub fn new(width: f32, height: f32) -> Option<Self> {
+        if !width.is_finite() || !height.is_finite() {
+            return None;
+        }
+        Some(Self {
+            width: width.clamp(WINDOW_MIN_SIZE.0, WINDOW_MAX_SIDE),
+            height: height.clamp(WINDOW_MIN_SIZE.1, WINDOW_MAX_SIDE),
+        })
+    }
+    pub fn path() -> Result<PathBuf, Error> {
+        Ok(UiSettings::path()?.with_file_name("window.toml"))
+    }
+    /// A missing or unreadable file gives the default size: a window must always open.
+    pub fn load_from(path: &Path) -> Self {
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|content| toml::from_str::<Self>(&content).ok())
+            .and_then(|size| Self::new(size.width, size.height))
+            .unwrap_or_default()
+    }
+    pub fn save_to(&self, path: &Path) -> Result<(), Error> {
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| Error::invalid_data("serialize window size", path, e))?;
+        config::write_atomic(path, content.as_bytes())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn window_size_round_trip_and_bounds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("window.toml");
+        assert_eq!(WindowSize::load_from(&path), WindowSize::default());
+        let size = WindowSize::new(1337.0, 811.0).unwrap();
+        size.save_to(&path).unwrap();
+        assert_eq!(WindowSize::load_from(&path), size);
+        let tiny = WindowSize::new(1.0, 1.0).unwrap();
+        assert_eq!((tiny.width, tiny.height), WINDOW_MIN_SIZE);
+        assert_eq!(WindowSize::new(f32::NAN, 600.0), None);
+        fs::write(&path, "width = 'wide'").unwrap();
+        assert_eq!(WindowSize::load_from(&path), WindowSize::default());
+    }
     #[test]
     fn missing_round_trip_and_replace() {
         let dir = tempfile::tempdir().unwrap();
