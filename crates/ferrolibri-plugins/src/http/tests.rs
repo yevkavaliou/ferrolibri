@@ -767,6 +767,41 @@ fn the_request_budget_counts_fetches_not_redirect_hops() {
 }
 
 #[test]
+fn requests_started_counts_calls_of_every_session_not_hops_or_refusals() {
+    let server = TestServer::start(opds::handle);
+    let http = server.http();
+    assert_eq!(http.requests_started(), 0);
+    let session = |budget| {
+        http.session(
+            Identity::Plugin("demo".into()),
+            server.allow_list(),
+            CancellationToken::default(),
+        )
+        .with_request_budget(budget)
+    };
+    let first = session(2);
+    // One fetch that follows two redirects is one request.
+    first.fetch(&server.url("/b/12/fb2"), &[]).unwrap();
+    first.fetch(&server.url("/error/400"), &[]).unwrap();
+    assert_eq!(http.requests_started(), 2);
+    // Refused by the budget: nothing started.
+    failure(first.fetch(&server.url("/error/400"), &[]));
+    assert_eq!(http.requests_started(), 2);
+    // Another session and `open` count too, and so do clones of the client.
+    let stream = http
+        .clone()
+        .session(
+            Identity::App,
+            server.allow_list(),
+            CancellationToken::default(),
+        )
+        .open(&server.url("/error/400"), &[], 1024)
+        .unwrap();
+    drop(stream);
+    assert_eq!(http.requests_started(), 3);
+}
+
+#[test]
 fn a_session_deadline_bounds_the_request() {
     let server = TestServer::start(|_, _| Reply::silent());
     let session = server

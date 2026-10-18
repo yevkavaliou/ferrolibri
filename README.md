@@ -25,7 +25,7 @@ cargo uninstall ferrolibri
 
 ## Desktop UI (iced)
 
-A native desktop client built with [iced](https://iced.rs) lives in `crates/ferrolibri-ui` and is the graphical client of FerroLibri (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. The Calibre library stays read-only.
+A native desktop client built with [iced](https://iced.rs) lives in `crates/ferrolibri-ui` and is the graphical client of FerroLibri (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. FerroLibri never writes to the Calibre library itself; the only way a book gets in is through Calibre's own `calibredb` (see [Plugins](#plugins-search-sources)).
 
 Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon and Vulkan development packages listed in [`.github/workflows/ui.yml`](.github/workflows/ui.yml)):
 
@@ -67,7 +67,7 @@ Press `c` on a selected book to convert it to another format. Conversion options
 
 Only formats you don't already have are offered. If neither tool is installed, the convert dialog will let you know.
 
-The Calibre library is read-only: FerroLibri never imports conversions into it or changes `metadata.db`, OPF, covers or source books. Conversion results live in a separate temporary workspace owned by the application; retain/export them before exiting if needed. Explicit core output directories must be outside the library. Existing output files produce a conflict error.
+FerroLibri never writes to the Calibre library itself: it never imports conversions into it or changes `metadata.db`, OPF, covers or source books. (The one exception is adding a downloaded book through `calibredb`, see [Plugins](#plugins-search-sources).) Conversion results live in a separate temporary workspace owned by the application; retain/export them before exiting if needed. Explicit core output directories must be outside the library. Existing output files produce a conflict error.
 
 ## Readers and core API
 
@@ -118,6 +118,27 @@ cargo run -p ferrolibri-ui --release
 ```
 
 or `cargo install --path crates/ferrolibri-ui` to install `ferrolibri-gui`. It is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)).
+
+## Plugins (search sources)
+
+The desktop UI can search more than your library. **Plugins** add sources to the Search screen: a plugin asks a website or catalog and returns results, which FerroLibri draws itself; when a result offers a file, a download icon appears, and a click downloads the book and adds it to your Calibre library.
+
+* **Install:** Settings → Plugins → *Install plugin…* — from a folder, or from a web address such as a GitHub repository (its releases are listed and checked for compatibility before anything is downloaded). A plugin is two files, `plugin.toml` and `plugin.js`. It runs in a sandbox and reaches only the sites it declares, which the install dialog lists.
+* **Adding books needs Calibre.** A downloaded book goes into the library through Calibre's `calibredb` command, so Calibre has to be installed; without it you can still search and open the page of a result. Books are never written to the library any other way.
+* **Examples:** [`examples/plugins/`](examples/plugins/README.md) has three: Open Library, Google Books (data only) and an OPDS catalog (Project Gutenberg, public-domain books, with downloads).
+* **Writing a plugin:** see the [plugin author's guide](docs/PLUGINS.md). The `ferrolibri-plugin-check` tool checks a plugin folder (manifest, compatibility, a real `search`, the number of requests and the time it took):
+
+  ```
+  cargo run -p ferrolibri-plugins --bin ferrolibri-plugin-check -- examples/plugins/open-library --query dracula
+  ```
+
+Plugins are not supported in the terminal (TUI) version.
+
+### Disclaimer
+
+FerroLibri's plugin interface is a neutral tool: it lets a program you install ask a website or catalog you choose and show the answer. The project does not provide, review, endorse, host or support third-party plugins, keeps no registry of them, and has no control over the sites they ask or the files those sites offer. The plugins and instructions in this repository are for sources that publish their catalogs for programs to use and offer books lawfully (Open Library, Google Books, and Project Gutenberg's public-domain collection); the project does not accept plugins or instructions for sites that distribute books without the right to do so.
+
+You install and run a plugin at your own risk and are responsible for what you search for, download and add to your library: copyright and a site's terms of use differ from country to country and from site to site, and it is for you to make sure you may download or use a book. The software is provided "as is", without warranty of any kind (see the MIT License); the authors are not liable for what a third-party plugin does, for any damage it causes, or for the use of any plugin or source.
 
 ## Extra tools
 

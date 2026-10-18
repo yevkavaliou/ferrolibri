@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use ferrolibri_core::converter::CancellationToken;
@@ -100,6 +100,8 @@ struct Shared {
     registry: Registry,
     gate: Arc<HostGate>,
     config: HttpConfig,
+    /// Requests (`fetch` or `open`) started on this client; redirects of one request are not counted.
+    started: AtomicU64,
 }
 
 impl Default for Http {
@@ -121,6 +123,13 @@ impl Http {
         Self::with_config(HttpConfig::default())
     }
 
+    /// How many requests (`fetch` or `open`, one per call, whatever the redirects) have started
+    /// on this client and its clones. A request refused by the budget or the cancellation does
+    /// not count. For diagnostics, such as the plugin checker.
+    pub fn requests_started(&self) -> u64 {
+        self.shared.started.load(Ordering::Relaxed)
+    }
+
     pub fn with_config(config: HttpConfig) -> Self {
         let registry = Registry::default();
         Self {
@@ -129,6 +138,7 @@ impl Http {
                 gate: Arc::new(HostGate::new(config.host_gap)),
                 registry,
                 config,
+                started: AtomicU64::new(0),
             }),
         }
     }
@@ -371,6 +381,7 @@ impl HttpSession {
         control.check()?;
         self.take_budget()?;
         let shared = &self.http.shared;
+        shared.started.fetch_add(1, Ordering::Relaxed);
         let config = &shared.config;
         let sanitized = sanitize(headers);
         let mut current = parse_url(url)?;

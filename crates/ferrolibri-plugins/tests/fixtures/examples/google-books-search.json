@@ -1,0 +1,44 @@
+{
+  "_fixture": "Written by hand from the Books API v1 documentation (volumes.list); NOT captured from the live service, which refused anonymous requests with status 429 when this was written.",
+  "kind": "books#volumes",
+  "totalItems": 3,
+  "items": [
+    {
+      "kind": "books#volume",
+      "id": "ix0LAAAAYAAJ",
+      "volumeInfo": {
+        "title": "Dracula",
+        "subtitle": "A Mystery Story",
+        "authors": ["Bram Stoker"],
+        "publisher": "Archibald Constable and Company",
+        "publishedDate": "1897-05-26",
+        "description": "<p>The classic <b>vampire</b> novel &amp; its &quot;Count&quot;.</p><p>Told in letters.<br>And diaries.</p>",
+        "industryIdentifiers": [
+          { "type": "ISBN_10", "identifier": "0141439513" },
+          { "type": "ISBN_13", "identifier": "9780141439518" }
+        ],
+        "categories": ["Fiction / Horror"],
+        "language": "en",
+        "imageLinks": {
+          "smallThumbnail": "http://books.google.com/books/content?id=ix0LAAAAYAAJ&printsec=frontcover&img=1&zoom=5&edge=curl&source=gbs_api",
+          "thumbnail": "http://books.google.com/books/content?id=ix0LAAAAYAAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        },
+        "infoLink": "http://books.google.com/books?id=ix0LAAAAYAAJ&dq=dracula&hl=&source=gbs_api"
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "bare0000001",
+      "volumeInfo": {
+        "title": "A Book With Almost Nothing Known",
+        "publishedDate": "n.d.",
+        "industryIdentifiers": [{ "type": "OTHER", "identifier": "OCLC:12345" }]
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "notitle00001",
+      "volumeInfo": { "authors": ["Nobody"] }
+    }
+  ]
+}

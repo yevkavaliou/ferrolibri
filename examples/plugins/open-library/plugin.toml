@@ -1,0 +1,23 @@
+id = "open-library"
+name = "Open Library"
+version = "0.1.0"
+api_version = 1
+author = "FerroLibri"
+homepage = "https://github.com/yevkavaliou/ferrolibri/tree/main/examples/plugins/open-library"
+license = "MIT"
+description = "Searches the Open Library catalog (openlibrary.org) by title, author or ISBN. Shows the book's data and a link to its page; it does not offer downloads."
+provides = ["search"]
+content = ["metadata"]
+search_hint = "Search by title, author or ISBN"
+
+[network]
+# The covers are served by covers.openlibrary.org, which redirects to archive.org and its
+# numbered servers (ia600505.us.archive.org).
+domains = ["openlibrary.org", "covers.openlibrary.org", "archive.org", "*.archive.org"]
+
+[[settings]]
+key = "base_url"
+type = "url"
+label = "Open Library address"
+network = true
+default = "https://openlibrary.org"

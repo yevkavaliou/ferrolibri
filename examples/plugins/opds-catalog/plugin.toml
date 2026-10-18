@@ -1,0 +1,29 @@
+id = "opds-catalog"
+name = "OPDS catalog (Project Gutenberg)"
+version = "0.1.0"
+api_version = 1
+author = "FerroLibri"
+homepage = "https://github.com/yevkavaliou/ferrolibri/tree/main/examples/plugins/opds-catalog"
+license = "MIT"
+description = "Searches an OPDS catalog; Project Gutenberg (public-domain books) by default. Offers the EPUB, Kindle and PDF files a catalog lists for a book."
+provides = ["search"]
+content = ["metadata", "public-domain"]
+search_hint = "Search by title or author"
+
+[network]
+# Only the default catalog. Another catalog is opened by entering its address in the settings
+# (the host of that address and its subdomains are then allowed).
+domains = ["www.gutenberg.org"]
+
+[[settings]]
+key = "base_url"
+type = "url"
+label = "Catalog address"
+network = true
+default = "https://www.gutenberg.org"
+
+[[settings]]
+key = "search_path"
+type = "string"
+label = "Search path ({searchTerms} is the text typed)"
+default = "/ebooks/search.opds/?query={searchTerms}"

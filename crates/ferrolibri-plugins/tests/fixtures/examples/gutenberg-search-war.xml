@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">
+<id>http://www.gutenberg.org/ebooks/search.opds/?query=war</id>
+<updated>2026-10-18T10:43:39Z</updated>
+<title>Books: war</title>
+<subtitle>Free eBooks since 1971.</subtitle>
+<author>
+<name>Project Gutenberg</name>
+<uri>https://www.gutenberg.org</uri>
+<email>webmaster@gutenberg.org</email>
+</author>
+<icon>https://www.gutenberg.org/gutenberg/favicon.ico</icon>
+<link rel="search" type="application/opensearchdescription+xml" title="Project Gutenberg Catalog Search" href="https://www.gutenberg.org/catalog/osd-books.xml"/>
+<link rel="self" title="This Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?query=war"/>
+<link rel="alternate" type="text/html" title="HTML Page" href="/ebooks/search/?query=war"/>
+<link rel="start" title="Start Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks.opds/"/>
+<link rel="next" title="Next Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?query=war&amp;start_index=26"/>
+<opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+<opensearch:startIndex>1</opensearch:startIndex>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/authors/search.opds/?query=war</id>
+<title>Authors</title>
+<content type="text">284 author names match your search.</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/authors/search.opds/?query=war"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/subjects/search.opds/?query=war</id>
+<title>Subjects</title>
+<content type="text">1062 subject headings match your search.</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/subjects/search.opds/?query=war"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/bookshelves/search.opds/?query=war</id>
+<title>Bookshelves</title>
+<content type="text">9 bookshelves match your search.</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/bookshelves/search.opds/?query=war"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/98.opds</id>
+<title>A Tale of Two Cities</title>
+<content type="text">Charles Dickens</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/98.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/2600.opds</id>
+<title>War and Peace</title>
+<content type="text">graf Leo Tolstoy</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2600.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/4085.opds</id>
+<title>The Adventures of Roderick Random</title>
+<content type="text">T. Smollett</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/4085.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/132.opds</id>
+<title>The Art of War</title>
+<content type="text">active 6th century B.C. Sunzi</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/132.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/36.opds</id>
+<title>The war of the worlds</title>
+<content type="text">H. G. Wells</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/36.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/6130.opds</id>
+<title>The Iliad</title>
+<content type="text">Homer</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/6130.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/26184.opds</id>
+<title>Simple Sabotage Field Manual</title>
+<content type="text">United States. Office of Strategic Services</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/26184.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/1023.opds</id>
+<title>Bleak House</title>
+<content type="text">Charles Dickens</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/1023.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/3268.opds</id>
+<title>The Mysteries of Udolpho</title>
+<content type="text">Ann Ward Radcliffe</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/3268.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/851.opds</id>
+<title>Narrative of the Captivity and Restoration of Mrs. Mary Rowlandson</title>
+<content type="text">Mary White Rowlandson</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/851.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/7142.opds</id>
+<title>The History of the Peloponnesian War</title>
+<content type="text">Thucydides</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/7142.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/46976.opds</id>
+<title>The Anabasis of Alexander :  or, The history of the wars and conquests of Alexander the Great</title>
+<content type="text">Arrian</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/46976.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/75201.opds</id>
+<title>A farewell to arms</title>
+<content type="text">Ernest Hemingway</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/75201.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/2199.opds</id>
+<title>The Iliad</title>
+<content type="text">Homer</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2199.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/203.opds</id>
+<title>Uncle Tom's Cabin</title>
+<content type="text">Harriet Beecher Stowe</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/203.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/1946.opds</id>
+<title>On War</title>
+<content type="text">Carl von Clausewitz</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/1946.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/1.opds</id>
+<title>The Declaration of Independence of the United States of America</title>
+<content type="text">Thomas Jefferson</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/1.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/4367.opds</id>
+<title>Personal Memoirs of U. S. Grant, Complete</title>
+<content type="text">Ulysses S. Grant</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/4367.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/32474.opds</id>
+<title>The Memoirs of the Conquistador Bernal Diaz del Castillo, Vol 1 (of 2)</title>
+<content type="text">Bernal Díaz del Castillo</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/32474.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/7700.opds</id>
+<title>Lysistrata</title>
+<content type="text">Aristophanes</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/7700.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/940.opds</id>
+<title>The Last of the Mohicans; A narrative of 1757</title>
+<content type="text">James Fenimore Cooper</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/940.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/558.opds</id>
+<title>The Thirty-Nine Steps</title>
+<content type="text">John Buchan</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/558.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/36462.opds</id>
+<title>King Arthur and the Knights of the Round Table</title>
+<content type="text">Sir Thomas Malory</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/36462.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/22373.opds</id>
+<title>Russian Fairy Tales: A Choice Collection of Muscovite Folk-lore</title>
+<content type="text">8109 downloads</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/22373.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+<entry>
+<updated>2026-10-18T10:43:39Z</updated>
+<id>https://www.gutenberg.org/ebooks/52958.opds</id>
+<title>Revelations of Divine Love</title>
+<content type="text">of Norwich Julian</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/52958.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,AAAA"/>
+</entry>
+</feed>
