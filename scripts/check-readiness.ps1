@@ -15,6 +15,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'core/TUI Clippy failed' }
     & cargo test --locked -p ferrolibri-core --test device_detection native_volume_enumeration_smoke -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'native volume enumeration smoke failed' }
+    # The plugin crate needs no graphics libraries, so it is checked here on every OS as well.
+    & cargo clippy --locked -p ferrolibri-plugins --all-targets -- -D warnings
+    if ($LASTEXITCODE -ne 0) { throw 'plugins Clippy failed' }
+    & cargo test --locked -p ferrolibri-plugins --all-targets
+    if ($LASTEXITCODE -ne 0) { throw 'plugins tests failed' }
     if ($Ui) {
         # The iced client has its own workflow (.github/workflows/ui.yml) with the same script.
         & (Join-Path $PSScriptRoot 'check-ui.ps1')

@@ -6,7 +6,7 @@ members = [
     "crates/ferrolibri-ui",
     "crates/ferrolibri-plugins",
 ]
-default-members = ["crates/ferrolibri-core", "crates/ferrolibri", "crates/ferrolibri-ui"]
+default-members = ["crates/ferrolibri-core", "crates/ferrolibri", "crates/ferrolibri-ui", "crates/ferrolibri-plugins"]
 exclude = ["vendor"]
 
 [workspace.package]
