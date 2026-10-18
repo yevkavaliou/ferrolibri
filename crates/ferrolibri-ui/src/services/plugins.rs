@@ -444,6 +444,15 @@ pub fn classify_plugin_message(message: &str) -> SourceErrorKind {
     {
         return SourceErrorKind::Unreachable;
     }
+    if server_status(&lower).is_some() {
+        return SourceErrorKind::Server;
+    }
+    SourceErrorKind::Plugin
+}
+
+/// The HTTP status 5xx a plugin's message names ("answered with status 503"), if any.
+pub fn server_status(message: &str) -> Option<u16> {
+    let lower = message.to_ascii_lowercase();
     let mut previous = "";
     for word in lower.split(|c: char| !c.is_ascii_alphanumeric()) {
         if matches!(previous, "status" | "http" | "code")
@@ -451,22 +460,57 @@ pub fn classify_plugin_message(message: &str) -> SourceErrorKind {
             && word.starts_with('5')
             && word.bytes().all(|b| b.is_ascii_digit())
         {
-            return SourceErrorKind::Server;
+            return word.parse().ok();
         }
         if !word.is_empty() {
             previous = word;
         }
     }
-    SourceErrorKind::Plugin
+    None
+}
+
+/// Hides the value of key-like query parameters (`?key=…`, `&api_key=…`) in a log line:
+/// network errors can carry the address of the request, and the address carries the key.
+pub fn redact_secrets(text: &str) -> String {
+    const NAMES: [&str; 5] = ["key", "api_key", "apikey", "token", "access_token"];
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(['?', '&']) {
+        let (head, tail) = rest.split_at(at + 1);
+        out.push_str(head);
+        let lower = tail.to_ascii_lowercase();
+        let name = NAMES
+            .iter()
+            .find(|name| lower.starts_with(&format!("{name}=")));
+        match name {
+            Some(name) => {
+                let value_start = name.len() + 1;
+                out.push_str(&tail[..value_start]);
+                out.push_str("***");
+                let value_len = tail[value_start..]
+                    .find(|c: char| c == '&' || c.is_whitespace() || "\"')<>".contains(c))
+                    .unwrap_or(tail.len() - value_start);
+                rest = &tail[value_start + value_len..];
+            }
+            None => rest = tail,
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn source_error(error: ferrolibri_core::Error) -> SourceError {
     match error.kind {
         ErrorKind::Cancelled => SourceError::cancelled(),
-        ErrorKind::Plugin { message, .. } => {
+        ErrorKind::Plugin { id, message } => {
+            log::warn!(target: "plugin", "[{id}] {}", redact_secrets(&message));
             SourceError::new(classify_plugin_message(&message), message)
         }
-        _ => SourceError::plugin(error.to_string()),
+        _ => {
+            let message = error.to_string();
+            log::warn!(target: "plugin", "{}", redact_secrets(&message));
+            SourceError::plugin(message)
+        }
     }
 }
 
@@ -1256,6 +1300,42 @@ mod tests {
         ] {
             assert_eq!(classify_plugin_message(message), Plugin, "{message}");
         }
+    }
+
+    #[test]
+    fn the_exact_server_status_is_read_from_the_plugins_words() {
+        assert_eq!(
+            server_status("Google Books answered with status 503"),
+            Some(503)
+        );
+        assert_eq!(server_status("HTTP 502 from the mirror"), Some(502));
+        assert_eq!(server_status("bad status: 500"), Some(500));
+        assert_eq!(server_status("refused (status 429)"), None);
+        assert_eq!(server_status("invoice 503 not found"), None);
+        assert_eq!(server_status("no numbers here"), None);
+    }
+
+    #[test]
+    fn log_lines_do_not_carry_keys_from_request_addresses() {
+        assert_eq!(
+            redact_secrets("not a valid URL: https://x.test/v1?q=a&key=SECRET123&b=1"),
+            "not a valid URL: https://x.test/v1?q=a&key=***&b=1"
+        );
+        assert_eq!(
+            redact_secrets("GET https://x.test/?API_KEY=abc def"),
+            "GET https://x.test/?API_KEY=*** def"
+        );
+        assert_eq!(
+            redact_secrets("(https://x.test/?token=t)"),
+            "(https://x.test/?token=***)"
+        );
+        assert_eq!(redact_secrets("a?b=c&d=e"), "a?b=c&d=e");
+        assert_eq!(
+            redact_secrets("key=visible without a separator"),
+            "key=visible without a separator"
+        );
+        assert_eq!(redact_secrets("ends with ?key="), "ends with ?key=***");
+        assert_eq!(redact_secrets(""), "");
     }
 
     #[test]

@@ -302,10 +302,17 @@ fn failure_text(plugin: &PluginRow, error: &SourceError) -> String {
             plugin.name,
             remote::host_of(plugin)
         ),
-        SourceErrorKind::Server => format!(
-            "{}: The server answered with an error. Try again later.",
-            plugin.name
-        ),
+        // The status is what the plugin's own words name ("answered with status 503").
+        SourceErrorKind::Server => match crate::services::plugins::server_status(&error.message) {
+            Some(status) => format!(
+                "{}: The server answered with an error (status {status}). Try again later.",
+                plugin.name
+            ),
+            None => format!(
+                "{}: The server answered with an error. Try again later.",
+                plugin.name
+            ),
+        },
         _ => format!("{}: {}", plugin.name, error.message),
     }
 }
