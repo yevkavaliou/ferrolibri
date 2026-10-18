@@ -3,18 +3,25 @@
 //! The views never touch `ferrolibri-plugins` types, so a test can describe a plugin, a
 //! release or a failure in a few lines. [`PluginBackend`] is the real thing: it reads the
 //! store, asks GitHub or a web address for a plugin, and installs what the user confirmed.
-use ferrolibri_core::{ErrorKind, converter::CancellationToken};
+use ferrolibri_core::{
+    ErrorKind,
+    calibre::BookAdder,
+    config::{self, LibraryPathState},
+    converter::CancellationToken,
+    jobs::ExternalJob,
+};
 use ferrolibri_plugins::{
-    Downgrade, Http, Identity, Inspection, InstallChange, InstallSource, InstalledPlugin,
-    LoadedPlugin, Manifest, ManifestError, PluginFunction, PluginRuntime, PluginStatus,
-    PluginStore, Release, ReleaseCheck, ReleaseOptions, RemoteError, RemoteInstaller, RemoteSource,
-    SUPPORTED_API_VERSIONS, SearchHit, SearchQuery, SettingKind, SettingValue, parse_search_page,
+    Downgrade, DownloadAndAdd, Http, Identity, Inspection, InstallChange, InstallSource,
+    InstalledPlugin, LoadedPlugin, Manifest, ManifestError, PluginFunction, PluginRuntime,
+    PluginStatus, PluginStore, Release, ReleaseCheck, ReleaseOptions, RemoteError, RemoteInstaller,
+    RemoteSource, SUPPORTED_API_VERSIONS, SearchHit, SearchQuery, SettingKind, SettingValue,
+    parse_search_page,
 };
 use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex, PoisonError},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -398,6 +405,32 @@ pub struct RemotePage {
     /// Results the plugin sent that broke a limit and were left out (they are in the log).
     pub dropped: usize,
 }
+
+// ---- Downloads (plan item 13) ----------------------------------------------------------------
+
+/// One offer of one result, to be downloaded into one library.
+#[derive(Clone, Debug)]
+pub struct DownloadRequest {
+    pub plugin: String,
+    /// The checked result the offer belongs to (`RemoteHit::handle`).
+    pub hit: Arc<SearchHit>,
+    /// `RemoteOffer::id`.
+    pub offer: String,
+    pub library: PathBuf,
+    /// Where a downloaded file is kept if Calibre cannot add it.
+    pub export_dir: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DownloadError {
+    /// `calibredb` was not found: the icon becomes "Needs Calibre".
+    NeedsCalibre,
+    /// Anything else that stops the job before it is queued, in words for a toast.
+    Failed(String),
+}
+
+pub type DownloadFuture =
+    Pin<Box<dyn Future<Output = Result<Arc<dyn ExternalJob>, DownloadError>> + Send>>;
 
 /// Reads the words of a plugin failure. `host.fetch` failures that nobody caught arrive as
 /// "network error (kind): …"; a plugin that meets a bad status usually says "status 503".
@@ -803,6 +836,9 @@ impl PluginRow {
     }
 }
 
+/// `calibredb` as it was found: `None` = not looked for yet, `Some(None)` = not installed.
+type CalibreLookup = Option<Option<Arc<dyn BookAdder>>>;
+
 /// The real plugin operations. Every method blocks; the caller runs them off the UI thread.
 #[derive(Clone)]
 pub struct PluginBackend {
@@ -811,16 +847,76 @@ pub struct PluginBackend {
     /// Runs `search` and `details`. It shares its HTTP client, and so the per-host queues, with
     /// the installer and with the covers.
     runtime: PluginRuntime,
+    /// What the last look for `calibredb` found.
+    calibre: Arc<Mutex<CalibreLookup>>,
 }
 
 impl PluginBackend {
     pub fn new(store: PluginStore) -> Self {
-        let http = Http::new();
+        Self::with_http(store, Http::new())
+    }
+
+    /// With the given HTTP client: tests point it at a local server that stands in for a site.
+    pub fn with_http(store: PluginStore, http: Http) -> Self {
         Self {
             store,
             installer: RemoteInstaller::new(http.clone()),
             runtime: PluginRuntime::new(http),
+            calibre: Arc::default(),
         }
+    }
+
+    /// `calibredb` as an adder. Runs the program to find out, so it blocks; a result that says
+    /// "not installed" is looked up again each time, because Calibre may have been installed
+    /// since (that is what "Check again" is for). `recheck` also forgets a positive answer.
+    pub fn calibre(&self, recheck: bool) -> Option<Arc<dyn BookAdder>> {
+        let mut cache = self.calibre.lock().unwrap_or_else(PoisonError::into_inner);
+        if recheck || cache.as_ref().is_none_or(Option::is_none) {
+            *cache = Some(DownloadAndAdd::detect_calibre());
+        }
+        cache.clone().flatten()
+    }
+
+    /// Builds the job for one offer: the plugin is loaded, Calibre and the library are checked.
+    /// Blocks (it runs `calibredb --version` the first time).
+    pub fn prepare_download(
+        &self,
+        request: &DownloadRequest,
+    ) -> Result<Arc<dyn ExternalJob>, DownloadError> {
+        let adder = self.calibre(false).ok_or(DownloadError::NeedsCalibre)?;
+        match config::inspect_library_path(&request.library) {
+            Ok(LibraryPathState::Ready) => {}
+            Ok(state) => {
+                return Err(DownloadError::Failed(super::saved_library_message(
+                    &request.library,
+                    state,
+                )));
+            }
+            Err(error) => return Err(DownloadError::Failed(error.to_string())),
+        }
+        let plugin = self
+            .store
+            .load(&request.plugin)
+            .map_err(|error| DownloadError::Failed(error.to_string()))?;
+        let offer = request
+            .hit
+            .offers
+            .iter()
+            .find(|offer| offer.id == request.offer)
+            .cloned()
+            .ok_or_else(|| DownloadError::Failed("This download is no longer offered.".into()))?;
+        let mut job = DownloadAndAdd::new(
+            self.runtime.clone(),
+            plugin,
+            request.hit.as_ref().clone(),
+            offer,
+            request.library.clone(),
+            Some(adder),
+        );
+        if let Some(dir) = &request.export_dir {
+            job = job.with_export_dir(dir.clone());
+        }
+        Ok(Arc::new(job))
     }
 
     pub fn store(&self) -> &PluginStore {

@@ -40,6 +40,16 @@ pub const EXTERNAL_LINK: &[u8] = icon!(
     r#"<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>"#
 );
 pub const CONVERT: &[u8] = icon!(r#"<path d="m16 3 4 4-4 4M20 7H4m4 14-4-4 4-4M4 17h16"/>"#);
+pub const DOWNLOAD: &[u8] = icon!(
+    r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>"#
+);
+pub const DOWNLOAD_OFF: &[u8] = icon!(
+    r#"<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/><path d="m3 3 18 18"/>"#
+);
+pub const CLOCK: &[u8] = icon!(r#"<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>"#);
+pub const ALERT: &[u8] = icon!(
+    r#"<path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>"#
+);
 pub fn tinted(data: &'static [u8], color: Color) -> svg::Svg<'static> {
     svg(svg::Handle::from_memory(data))
         .width(16)

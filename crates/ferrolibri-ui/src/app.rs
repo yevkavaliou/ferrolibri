@@ -92,6 +92,7 @@ pub struct State {
     pub viewport_width: f32,
     pub window_width: f32,
     pub pointer_x: f32,
+    pub pointer_y: f32,
     pub details_drag: Option<(f32, f32)>,
     pub dragged_details_width: Option<f32>,
     pub sidebar_drag: Option<(f32, f32)>,
@@ -136,6 +137,7 @@ pub struct State {
     pub blur: crate::blur::BlurState,
     pub plugins: crate::plugins::PluginsState,
     pub remote: crate::remote::RemoteState,
+    pub downloads: crate::downloads::DownloadsState,
 }
 impl State {
     pub fn row_height(&self) -> f32 {
@@ -402,6 +404,9 @@ pub enum Message {
     Close(iced::window::Id),
     Plugins(crate::plugins::Msg),
     Remote(crate::remote::Msg),
+    Download(crate::downloads::Msg),
+    /// The pointer moved: where it is, for a menu that opens under it.
+    PointerAt(iced::Point),
 }
 
 pub fn update(state: &mut State, message: Message, services: &dyn Services) -> Task<Message> {
@@ -883,6 +888,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
                 state.scroll_last = None;
             }
             crate::widgets::toasts::advance(state, now);
+            crate::downloads::tick(state);
             return update(state, Message::Tick, services);
         }
         Message::DismissToast(id) => state.toasts.retain(|t| t.id != id),
@@ -1243,6 +1249,11 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
         Message::ToggleSidebar | Message::ToggleDetails => {}
         Message::Plugins(msg) => return crate::plugins::update(state, msg, services),
         Message::Remote(msg) => return crate::remote::update(state, msg, services),
+        Message::Download(msg) => return crate::downloads::update(state, msg, services),
+        Message::PointerAt(at) => {
+            state.pointer_y = at.y;
+            return update_inner(state, Message::PointerMoved(at.x), services);
+        }
         Message::Navigate(screen) => {
             let to_settings = screen == Screen::Settings;
             if screen == Screen::Search && matches!(state.screen, Screen::Home { .. }) {
@@ -1328,6 +1339,7 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             poll(state, services);
         }
         Message::ClearFinished => {
+            let mut cleared: Vec<JobId> = state.finished_jobs.iter().copied().collect();
             services.clear_finished();
             state
                 .jobs
@@ -1343,6 +1355,9 @@ fn update_inner(state: &mut State, message: Message, services: &dyn Services) ->
             state
                 .send_devices
                 .retain(|id, _| state.jobs.contains_key(id));
+            for id in std::mem::take(&mut cleared) {
+                state.downloads.forget(id);
+            }
         }
         Message::LoadMetadata { book, path } => {
             state.metadata = None;
@@ -1817,6 +1832,8 @@ fn escape(state: &mut State, services: &dyn Services) -> Task<Message> {
     }
     if state.reader_picker.open {
         state.reader_picker.close();
+    } else if state.downloads.menu.is_some() {
+        state.downloads.menu = None;
     } else if state.convert_menu {
         state.convert_menu = false;
     } else if state.show_warnings {
@@ -1939,12 +1956,17 @@ fn reveal_cursor(state: &mut State) -> Task<Message> {
     }
 }
 
+/// Reads what the jobs have reported, now rather than at the next clock tick.
+pub(crate) fn poll_now(state: &mut State, services: &dyn Services) {
+    poll(state, services);
+}
 fn poll(state: &mut State, services: &dyn Services) {
     for update in services.poll() {
         let id = update.view.id;
         let is_scan = update.view.kind == crate::services::jobs::JobKind::Scan;
         let cancelled = update.view.state == JobState::Cancelled;
         let is_send = update.view.kind == crate::services::jobs::JobKind::Send;
+        let is_download = update.view.kind == crate::services::jobs::JobKind::Download;
         let title = update.view.title.clone();
         let already_finished = state.finished_jobs.contains(&id);
         state.jobs.insert(id, update.view);
@@ -1971,6 +1993,9 @@ fn poll(state: &mut State, services: &dyn Services) {
                     state.job_messages.insert(id, message.clone());
                     crate::widgets::toasts::push(state, message, error);
                 }
+                if is_download {
+                    crate::downloads::finished(state, id, result.as_ref(), cancelled);
+                }
                 // A book was added to the library: scan again so that it shows up (the add job
                 // itself only writes through `calibredb`). A duplicate changed nothing.
                 if let Ok(JobOutput::Added(book)) = result.as_ref()
@@ -1992,6 +2017,8 @@ fn poll(state: &mut State, services: &dyn Services) {
                         refresh_filter(state);
                         invalidate_search(state);
                         state.selection.retain(&state.catalog.order);
+                        crate::downloads::library_changed(state);
+                        crate::downloads::select_added(state);
                         if state.selection.selected.len() == 1 {
                             let book = state.selection.selected.first().unwrap().clone();
                             if let Some(entry) = state.catalog.get(&book) {
@@ -2117,6 +2144,7 @@ fn poll(state: &mut State, services: &dyn Services) {
             state.job_messages.remove(&id);
             state.send_readers.remove(&id);
             state.send_devices.remove(&id);
+            state.downloads.forget(id);
         }
     }
 }
@@ -2127,6 +2155,7 @@ pub fn subscription(state: &State) -> Subscription<Message> {
         .any(|job| matches!(job.state, JobState::Waiting | JobState::Running))
         || state.active_scan.is_some()
         || state.scroll_visible
+        || crate::downloads::animating(state)
         || !state.metadata_requests.is_empty()
         || state.toasts.iter().any(|t| !t.error))
         && !state.closing
@@ -2140,7 +2169,7 @@ pub fn subscription(state: &State) -> Subscription<Message> {
         iced::window::close_requests().map(Message::Close),
         iced::event::listen_with(|event, status, _| match event {
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                Some(Message::PointerMoved(position.x))
+                Some(Message::PointerAt(position))
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
                 Some(Message::FinishPaneResize)

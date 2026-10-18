@@ -2,6 +2,7 @@ pub mod book_grid;
 pub mod book_list;
 pub mod convert;
 pub mod device_bar;
+pub mod downloads;
 pub mod jobs;
 pub mod plugins;
 pub mod remote;

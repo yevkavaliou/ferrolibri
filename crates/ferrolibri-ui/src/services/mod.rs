@@ -199,6 +199,21 @@ pub trait Services: Send + Sync {
     ) -> ServiceFuture<iced::widget::image::Handle> {
         Box::pin(async { Err("Covers of plugins are unavailable".into()) })
     }
+    /// Whether Calibre (`calibredb`) is installed, which adding a downloaded book needs.
+    /// `recheck` looks again even if it was found. The default says yes, so a fake that does
+    /// not care about downloads shows the usual icons.
+    fn calibre_available(&self, _recheck: bool) -> ServiceFuture<bool> {
+        Box::pin(async { Ok(true) })
+    }
+    /// Builds the job that downloads one offer and adds the book to the library; the caller
+    /// queues it with `enqueue`. Refused with `NeedsCalibre` when `calibredb` is missing.
+    fn prepare_download(&self, _request: plugins::DownloadRequest) -> plugins::DownloadFuture {
+        Box::pin(async {
+            Err(plugins::DownloadError::Failed(
+                "Downloads are unavailable".into(),
+            ))
+        })
+    }
     /// Opens a web page in the user's browser. Only `http` and `https` addresses.
     fn open_url(&self, url: String) -> ServiceFuture<()> {
         blocking(move || open_web_address(&url))
@@ -315,6 +330,15 @@ impl RealServices {
     /// Keep plugins and their switches somewhere other than beside the preferences.
     pub fn with_plugin_store(mut self, store: ferrolibri_plugins::PluginStore) -> Self {
         self.plugins = plugins::PluginBackend::new(store);
+        self
+    }
+    /// Plugins with their own HTTP client, for tests that stand a local server in for a site.
+    pub fn with_plugin_http(
+        mut self,
+        store: ferrolibri_plugins::PluginStore,
+        http: ferrolibri_plugins::Http,
+    ) -> Self {
+        self.plugins = plugins::PluginBackend::with_http(store, http);
         self
     }
     /// Isolate benchmark caches without changing the user's preferences.
@@ -642,6 +666,18 @@ impl Services for RealServices {
     ) -> plugins::SourceFuture<plugins::RemoteHit> {
         let backend = self.plugins.clone();
         blocking_source(move || backend.details(&id, &hit, &cancel))
+    }
+    fn calibre_available(&self, recheck: bool) -> ServiceFuture<bool> {
+        let backend = self.plugins.clone();
+        blocking(move || Ok(backend.calibre(recheck).is_some()))
+    }
+    fn prepare_download(&self, request: plugins::DownloadRequest) -> plugins::DownloadFuture {
+        let backend = self.plugins.clone();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || backend.prepare_download(&request))
+                .await
+                .map_err(|e| plugins::DownloadError::Failed(e.to_string()))?
+        })
     }
     fn load_remote_cover(
         &self,

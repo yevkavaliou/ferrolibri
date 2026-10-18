@@ -115,7 +115,7 @@ pub fn error_message(error: &ferrolibri_core::Error) -> String {
                 path.display()
             ),
             None => format!(
-                "Could not add the book to the library. {}",
+                "Could not add the book to the library. {} The file was not kept.                  Choose an export folder in Settings to keep downloads that cannot be added.",
                 error_message(cause)
             ),
         },

@@ -1,6 +1,7 @@
 pub mod app;
 pub mod blur;
 pub mod catalog;
+pub mod downloads;
 pub mod icons;
 pub mod keymap;
 pub mod palette;

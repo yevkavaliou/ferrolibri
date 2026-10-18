@@ -1,5 +1,6 @@
 use crate::{
     app::{Message, State},
+    icons,
     services::jobs::{JobKind, JobView},
     theme,
 };
@@ -20,6 +21,20 @@ pub fn listed(job: &JobView) -> bool {
 }
 fn megabytes(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / 1_000_000.0)
+}
+/// `Downloading · 1.2 MB of 3.4 MB`, or `Downloading · 1.2 MB received` when the size is not known.
+fn downloading(job: &JobView) -> String {
+    match (job.received, job.progress) {
+        (None, _) => "Getting link…".into(),
+        (Some(received), Some((_, total))) => {
+            format!(
+                "Downloading · {} of {}",
+                megabytes(received),
+                megabytes(total)
+            )
+        }
+        (Some(received), None) => format!("Downloading · {} received", megabytes(received)),
+    }
 }
 pub fn percentage(job: &JobView) -> Option<f32> {
     let copying = job.kind == JobKind::Send && job.stage == Some(Stage::Copying);
@@ -48,11 +63,7 @@ pub fn status(job: &JobView) -> String {
             Some(Stage::Copying) => percentage(job)
                 .map(|p| format!("Copying · {p:.0}%"))
                 .unwrap_or_else(|| "Copying…".into()),
-            Some(Stage::Downloading) => match (percentage(job), job.received) {
-                (Some(p), _) => format!("Downloading · {p:.0}%"),
-                (None, Some(bytes)) => format!("Downloading · {}", megabytes(bytes)),
-                (None, None) => "Downloading…".into(),
-            },
+            Some(Stage::Downloading) => downloading(job),
             Some(Stage::Adding) => "Adding to library…".into(),
             None => "Starting…".into(),
         },
@@ -72,21 +83,78 @@ fn result_text(state: &State, job: &JobView) -> String {
         }
         Some(Ok(JobOutput::Added(book))) => match book.outcome {
             ferrolibri_core::calibre::AddOutcome::Added { .. } => {
-                format!("Added to the library · {}", book.title)
+                format!("Added to your library · {}", book.title)
             }
             ferrolibri_core::calibre::AddOutcome::AlreadyExists => {
-                format!("Already in the library · {}", book.title)
+                format!("Already in your library · not added again · {}", book.title)
             }
         },
         _ if job.kind == JobKind::Scan => "Scanned".into(),
         _ => status(job),
     }
 }
+/// The bar of a download whose size is not known: a piece that sweeps along the track.
+fn moving_bar<'a>(tick: u32) -> Element<'a, Message> {
+    const WIDTH: f32 = 80.0;
+    const PIECE: f32 = 32.0;
+    let offset = (tick % 20) as f32 / 20.0 * (WIDTH - PIECE);
+    container(row![
+        Space::new().width(offset),
+        container(Space::new())
+            .width(PIECE)
+            .height(3)
+            .style(|_| container::Style {
+                background: Some(theme::DARK.accent.into()),
+                ..Default::default()
+            }),
+    ])
+    .width(WIDTH)
+    .height(3)
+    .clip(true)
+    .style(|_| container::Style {
+        background: Some(theme::DARK.hover.into()),
+        ..Default::default()
+    })
+    .into()
+}
+/// The cancel button of a job. Once a downloaded book is being handed to Calibre it cannot be
+/// stopped (the design's assumption: a `calibredb` that is killed half way may leave the library
+/// half written), so the button stays but is inactive and says why.
+fn cancel_button<'a>(state: &State, job: &JobView) -> Element<'a, Message> {
+    let adding = job.kind == JobKind::Download && job.stage == Some(Stage::Adding);
+    let size = theme::font(state, 12.0);
+    let control = button(text("Cancel").size(size))
+        .style(theme::outline)
+        .on_press_maybe((!adding).then_some(Message::Cancel(job.id)));
+    if adding {
+        super::tip(
+            control,
+            text("Adding to the library cannot be cancelled").size(size),
+            super::Position::Left,
+        )
+    } else {
+        control.into()
+    }
+}
 fn job_row<'a>(state: &'a State, job: &'a JobView) -> Element<'a, Message> {
+    let download = job.kind == JobKind::Download;
+    let mut status = result_text(state, job);
+    if download && let Some(plugin) = state.downloads.plugin_of(job.id) {
+        status = format!("{plugin} · {status}");
+    }
+    let title = text(&job.title).size(theme::font(state, 13.0));
+    let title: Element<'a, Message> = if download {
+        row![icons::view(icons::DOWNLOAD), title]
+            .spacing(6)
+            .align_y(iced::Alignment::Center)
+            .into()
+    } else {
+        title.into()
+    };
     let mut contents = row![
         column![
-            text(&job.title).size(theme::font(state, 13.0)),
-            text(result_text(state, job))
+            title,
+            text(status)
                 .size(theme::font(state, 12.0))
                 .color(if job.state == JobState::Failed {
                     theme::DARK.error
@@ -102,12 +170,14 @@ fn job_row<'a>(state: &'a State, job: &'a JobView) -> Element<'a, Message> {
     if unfinished(job) {
         if let Some(p) = percentage(job) {
             contents = contents.push(progress_bar(0.0..=100.0, p).length(80).girth(3));
+        } else if download
+            && job.state == JobState::Running
+            && job.stage == Some(Stage::Downloading)
+            && job.received.is_some()
+        {
+            contents = contents.push(moving_bar(state.downloads.spin()));
         }
-        contents = contents.push(
-            button(text("Cancel").size(theme::font(state, 12.0)))
-                .style(theme::outline)
-                .on_press(Message::Cancel(job.id)),
-        );
+        contents = contents.push(cancel_button(state, job));
     }
     container(contents).padding([8, 12]).width(Fill).into()
 }
@@ -252,7 +322,8 @@ mod tests {
         assert_eq!(status(&job), "Cancelled");
     }
     #[test]
-    fn a_download_shows_percent_when_the_size_is_known_and_megabytes_when_it_is_not() {
+    fn a_download_shows_bytes_of_the_total_when_the_size_is_known_and_bytes_received_when_it_is_not()
+     {
         let mut job = JobView {
             id: crate::services::jobs::JobId(1),
             title: "Download".into(),
@@ -263,11 +334,11 @@ mod tests {
             received: None,
             error: None,
         };
-        assert_eq!(status(&job), "Downloading…");
+        assert_eq!(status(&job), "Getting link…");
         job.received = Some(2_500_000);
-        assert_eq!(status(&job), "Downloading · 2.5 MB");
-        job.progress = Some((25, 100));
-        assert_eq!(status(&job), "Downloading · 25%");
+        assert_eq!(status(&job), "Downloading · 2.5 MB received");
+        job.progress = Some((1_200_000, 3_400_000));
+        assert_eq!(status(&job), "Downloading · 2.5 MB of 3.4 MB");
         job.stage = Some(Stage::Adding);
         assert_eq!(percentage(&job), None);
         assert_eq!(status(&job), "Adding to library…");

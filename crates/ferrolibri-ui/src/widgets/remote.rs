@@ -2,8 +2,8 @@
 //! `docs/design/mockup.html`: the source switch, the states of a search, the rows and cards of
 //! results, and the pane with the details of the selected one. The texts are the mockup's.
 //!
-//! Not here: the download icon on rows, cards and offers, and the "Calibre is needed" card.
-//! They belong to item 13 (design gap G6).
+//! The download icon on rows, cards and offers, the format menu and the "Calibre is needed"
+//! card (design gap G6, item 13) are in `widgets::downloads`; this module places them.
 use crate::{
     app::{Message, State},
     icons,
@@ -486,7 +486,9 @@ fn list<'a>(state: &'a State, plugin: &'a PluginRow) -> Element<'a, Message> {
         );
         let mut rows =
             column![Space::new().height(slice.start as f32 * state.row_height())].spacing(0);
-        let available = (size.width - 26.0 - 84.0 - 24.0 - 24.0 - 12.0).max(0.0);
+        // The download icon sits over the end of the row: leave it room.
+        let available =
+            (size.width - 26.0 - 84.0 - 24.0 - 24.0 - 12.0 - super::downloads::ICON_SIZE).max(0.0);
         let (title_width, author_width) = (available * 0.6, available * 0.4);
         let font = theme::font(state, 13.0);
         for hit in &hits[slice.clone()] {
@@ -509,17 +511,19 @@ fn list<'a>(state: &'a State, plugin: &'a PluginRow) -> Element<'a, Message> {
                 .color(theme::DARK.text_secondary)
                 .width(Length::Fixed(author_width)),
                 super::book_list::format_tags(state, &labels),
+                Space::new().width(super::downloads::ICON_SIZE),
             ]
             .spacing(8)
             .align_y(Alignment::Center);
-            rows = rows.push(
+            rows = rows.push(iced::widget::stack![
                 button(cell)
                     .height(state.row_height())
                     .width(Fill)
                     .padding([0, 12])
                     .style(move |_, status| theme::book_row(selected, focused, status))
                     .on_press(msg(Msg::Select(hit.id.clone()))),
-            );
+                super::downloads::row_overlay(state, hit, state.row_height()),
+            ]);
         }
         rows = rows
             .push(Space::new().height((hits.len() - slice.end) as f32 * state.row_height()))
@@ -574,13 +578,20 @@ fn grid<'a>(state: &'a State, plugin: &'a PluginRow) -> Element<'a, Message> {
                 ]
                 .spacing(3)
                 .align_x(Alignment::Center);
-                cards = cards.push(
+                cards = cards.push(iced::widget::stack![
                     button(card)
                         .width(geometry.card_width)
                         .padding(6)
                         .style(move |_, status| theme::book_row(selected, focused, status))
                         .on_press(msg(Msg::Select(hit.id.clone()))),
-                );
+                    super::downloads::cover_overlay(
+                        state,
+                        hit,
+                        geometry.card_width,
+                        geometry.cover_width,
+                        geometry.cover_height,
+                    ),
+                ]);
             }
             rows = rows.push(
                 container(cards)
@@ -611,7 +622,7 @@ fn grid<'a>(state: &'a State, plugin: &'a PluginRow) -> Element<'a, Message> {
 
 // ---- the details pane (G5) --------------------------------------------------------------------
 
-fn size_text(size: Option<u64>) -> String {
+pub(super) fn size_text(size: Option<u64>) -> String {
     match size {
         None => "size unknown".into(),
         Some(bytes) if bytes < 1_000_000 => format!("{} KB", (bytes as f64 / 1e3).round().max(1.0)),
@@ -619,12 +630,8 @@ fn size_text(size: Option<u64>) -> String {
     }
 }
 
-fn offer_row<'a>(state: &State, offer: &RemoteOffer) -> Element<'a, Message> {
-    let tag = if offer.zip {
-        format!("{} zip", offer.format)
-    } else {
-        offer.format.clone()
-    };
+fn offer_row<'a>(state: &State, hit: &RemoteHit, offer: &RemoteOffer) -> Element<'a, Message> {
+    let tag = crate::downloads::offer_label(offer);
     let what = match &offer.label {
         Some(label) => format!("{label} · {}", size_text(offer.size)),
         None => size_text(offer.size),
@@ -634,6 +641,7 @@ fn offer_row<'a>(state: &State, offer: &RemoteOffer) -> Element<'a, Message> {
             .padding([1, 4])
             .style(theme::format_tag),
         small(state, what).width(Fill),
+        super::downloads::offer_button(state, hit, offer),
     ]
     .spacing(8)
     .align_y(Alignment::Center)
@@ -739,8 +747,11 @@ pub fn details(state: &State) -> Element<'_, Message> {
                 .color(theme::DARK.text_muted),
         );
     } else {
+        if let Some(card) = super::downloads::calibre_card(state) {
+            content = content.push(card);
+        }
         for offer in &hit.offers {
-            content = content.push(offer_row(state, offer));
+            content = content.push(offer_row(state, hit, offer));
         }
     }
     scrollable(content)

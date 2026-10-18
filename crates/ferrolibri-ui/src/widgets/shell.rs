@@ -572,6 +572,43 @@ pub fn view<'a>(state: &'a State, content: Element<'a, Message>) -> Element<'a, 
         } else {
             base
         };
+    let base: Element<'_, Message> = match super::downloads::menu(state) {
+        Some(menu) if crate::remote::is_remote(state) => {
+            let at = state
+                .downloads
+                .menu
+                .as_ref()
+                .map_or(iced::Point::ORIGIN, |m| m.at);
+            let offers = state
+                .downloads
+                .menu
+                .as_ref()
+                .and_then(|m| state.remote.hit(&m.hit))
+                .map_or(0, |h| h.offers.len());
+            // Under the pointer, its right edge near the icon; kept inside the results.
+            let height = super::downloads::menu_height(offers);
+            let lowest = if state.list_height > 0.0 {
+                theme::TOOLBAR_HEIGHT + state.list_height + 60.0 - height
+            } else {
+                f32::MAX
+            };
+            iced::widget::stack![
+                base,
+                iced::widget::mouse_area(container(Space::new()).width(Fill).height(Fill))
+                    .on_press(Message::Download(crate::downloads::Msg::CloseMenu)),
+                container(iced::widget::mouse_area(menu).on_press(Message::Ignore))
+                    .padding(iced::Padding {
+                        top: (at.y + 18.0).min(lowest).max(0.0),
+                        left: (at.x + 14.0 - super::downloads::MENU_WIDTH).max(8.0),
+                        ..Default::default()
+                    })
+                    .width(Fill)
+                    .height(Fill),
+            ]
+            .into()
+        }
+        _ => base,
+    };
     let base = if state.export_prompt {
         iced::widget::stack![
             base,

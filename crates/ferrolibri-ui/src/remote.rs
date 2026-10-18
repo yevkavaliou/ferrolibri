@@ -472,6 +472,7 @@ fn choose(state: &mut State, source: SearchSource, services: &dyn Services) -> T
         },
     };
     state.remote.reset();
+    state.downloads.menu = None;
     state.list_offset = 0.0;
     let mut settings = state.visible_settings().clone();
     settings.search_source = id;
@@ -497,6 +498,7 @@ fn search(
     };
     let needs_address = row.needs_setup();
     state.remote.reset();
+    state.downloads.menu = None;
     state.list_offset = 0.0;
     let mut session = Session {
         plugin: plugin.clone(),
@@ -551,6 +553,11 @@ fn found(
             session.next = page.next_cursor;
             session.hits = page.hits;
             session.phase = Phase::Results;
+            // Results are there: the download icons need to know whether Calibre is.
+            return Task::batch([
+                crate::downloads::ensure_calibre(state, services),
+                request_covers(state, services),
+            ]);
         }
     }
     request_covers(state, services)
