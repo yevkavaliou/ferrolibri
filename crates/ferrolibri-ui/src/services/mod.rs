@@ -469,17 +469,34 @@ fn open_web_address(url: &str) -> Result<(), String> {
     {
         return Err("Only web addresses can be opened.".into());
     }
-    #[cfg(target_os = "windows")]
-    let mut command = std::process::Command::new("explorer.exe");
-    #[cfg(target_os = "macos")]
-    let mut command = std::process::Command::new("open");
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let mut command = std::process::Command::new("xdg-open");
-    command
-        .arg(url.trim())
+    web_address_command(url.trim())
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
+}
+
+/// The program that opens `url` in the default browser. On Windows this is the URL
+/// protocol handler, not `explorer.exe`: Explorer opens a folder instead when the
+/// address has a query string (`?id=…&hl=…`).
+fn web_address_command(url: &str) -> std::process::Command {
+    #[cfg(target_os = "windows")]
+    {
+        let mut command = std::process::Command::new("rundll32.exe");
+        command.args(["url.dll,FileProtocolHandler", url]);
+        command
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut command = std::process::Command::new("open");
+        command.arg(url);
+        command
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(url);
+        command
+    }
 }
 fn blocking_plugin<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, plugins::Problem> + Send + 'static,
@@ -696,6 +713,31 @@ impl Services for RealServices {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn web_address_is_one_argument_and_never_goes_to_explorer() {
+        let url = "https://books.google.com/books?id=AbC&hl=&source=gbs_api";
+        let command = web_address_command(url);
+        let program = command.get_program().to_string_lossy().to_lowercase();
+        let arguments: Vec<_> = command
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(!program.contains("explorer"), "{program}");
+        assert_eq!(arguments.last().map(String::as_str), Some(url));
+        #[cfg(target_os = "windows")]
+        assert_eq!(arguments, ["url.dll,FileProtocolHandler", url]);
+    }
+    #[test]
+    fn only_web_addresses_are_opened() {
+        for bad in [
+            "file:///C:/Windows",
+            "javascript:alert(1)",
+            "C:\\Windows",
+            "https://x\ny",
+        ] {
+            assert!(open_web_address(bad).is_err(), "{bad}");
+        }
+    }
     #[test]
     fn library_config_validation_scan_and_read_only_fixture() {
         let dir = tempfile::tempdir().unwrap();
