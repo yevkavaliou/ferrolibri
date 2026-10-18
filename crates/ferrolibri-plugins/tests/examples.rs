@@ -28,6 +28,8 @@ const POLICY_DOMAINS: &[&str] = &[
     "www.googleapis.com",
     "books.google.com",
     "www.gutenberg.org",
+    // The mock names a domain that never resolves (RFC 2606): it reaches no site.
+    "mock.invalid",
 ];
 
 fn examples_dir() -> PathBuf {
@@ -89,7 +91,7 @@ fn sole_query(server: &TestServer) -> ferrolibri_plugins::testing::Request {
 // --- All examples --------------------------------------------------------------------------
 
 #[test]
-fn every_example_is_a_compatible_plugin_for_one_of_the_legal_sources() {
+fn every_example_is_a_compatible_plugin_for_one_of_the_legal_sources_or_the_mock() {
     let mut seen = BTreeSet::new();
     for entry in std::fs::read_dir(examples_dir()).unwrap() {
         let dir = entry.unwrap().path();
@@ -117,7 +119,12 @@ fn every_example_is_a_compatible_plugin_for_one_of_the_legal_sources() {
     }
     assert_eq!(
         seen.into_iter().collect::<Vec<_>>(),
-        ["google-books", "opds-catalog", "open-library"]
+        [
+            "google-books",
+            "mock-library",
+            "opds-catalog",
+            "open-library"
+        ]
     );
 }
 
