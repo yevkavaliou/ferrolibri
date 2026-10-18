@@ -965,7 +965,7 @@ fn a_server_error_is_called_one_and_offers_to_try_again() {
     assert_shows(
         &state,
         &[
-            "Standard Ebooks: The server answered with an error. Try again later.",
+            "Standard Ebooks: The server answered with an error (status 503). Try again later.",
             "Try again",
         ],
     );
@@ -1105,7 +1105,7 @@ fn a_failed_show_more_keeps_the_results_and_can_be_tried_again() {
     assert_shows(
         &state,
         &[
-            "Could not load more results: Standard Ebooks: The server answered with an error. Try again later.",
+            "Could not load more results: Standard Ebooks: The server answered with an error (status 502). Try again later.",
             "First",
         ],
     );

@@ -13,9 +13,9 @@ mod screens;
 
 fn main() -> iced::Result {
     ferrolibri_ui::blur::prepare_environment();
-    // Warnings the UI does not show (cover decoding, device polling, metadata,
-    // scan) are logged; RUST_LOG overrides the default level.
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    // Warnings the UI does not show (cover decoding, device polling, metadata, scan, a plugin
+    // failing) are logged to a file next to ui.toml; RUST_LOG overrides the default level.
+    ferrolibri_ui::logging::init();
     let services = match RealServices::new() {
         Ok(services) => std::sync::Arc::new(services),
         Err(error) => {

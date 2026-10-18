@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod downloads;
 pub mod icons;
 pub mod keymap;
+pub mod logging;
 pub mod palette;
 pub mod plugins;
 pub mod remote;
