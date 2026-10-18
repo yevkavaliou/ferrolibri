@@ -33,6 +33,12 @@ fn main() -> iced::Result {
     let boot_services = services.clone();
     let subscription_services = services.clone();
 
+    let window_path = ferrolibri_ui::settings::WindowSize::path().ok();
+    let window_size = window_path
+        .as_deref()
+        .map(ferrolibri_ui::settings::WindowSize::load_from)
+        .unwrap_or_default();
+
     let result = iced::application(
         move || {
             let mut state = app::State::default();
@@ -54,14 +60,30 @@ fn main() -> iced::Result {
             (state, iced::Task::batch([settings, library, backends]))
         },
         move |state: &mut app::State, message| {
+            if matches!(message, app::Message::Close(_))
+                && let (Some(path), Some(size)) = (
+                    window_path.as_deref(),
+                    ferrolibri_ui::settings::WindowSize::new(
+                        state.window_width,
+                        state.window_height,
+                    )
+                    .filter(|_| state.window_width > 0.0 && state.window_height > 0.0),
+                )
+                && let Err(error) = size.save_to(path)
+            {
+                log::warn!("could not save the window size: {error}");
+            }
             app::update(state, message, update_services.as_ref())
         },
         app::view,
     )
     .title("FerroLibri")
     .window(iced::window::Settings {
-        size: iced::Size::new(1100.0, 700.0),
-        min_size: Some(iced::Size::new(760.0, 520.0)),
+        size: iced::Size::new(window_size.width, window_size.height),
+        min_size: Some(iced::Size::new(
+            ferrolibri_ui::settings::WINDOW_MIN_SIZE.0,
+            ferrolibri_ui::settings::WINDOW_MIN_SIZE.1,
+        )),
         // With a transparent window the toolbar doubles as the title bar.
         decorations: !ferrolibri_ui::blur::ready(),
         transparent: ferrolibri_ui::blur::ready(),
