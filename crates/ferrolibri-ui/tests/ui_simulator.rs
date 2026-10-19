@@ -407,7 +407,7 @@ fn clicking_send_queues_one_job_per_selected_book_and_both_reach_the_reader() {
     services.shutdown();
 }
 
-// Library choice screen (plugins plan item 3, design gap G1).
+// Library choice screen.
 mod library_states {
     use super::*;
     use ferrolibri_core::config::LibraryPathState;

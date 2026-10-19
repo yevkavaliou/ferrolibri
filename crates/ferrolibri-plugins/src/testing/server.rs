@@ -322,7 +322,7 @@ impl TestServer {
     }
 
     /// What a user who typed `http://catalog.test:<port>/` into a plugin setting allows
-    /// (D4): the host, its subdomains, any scheme and port, private addresses.
+    ///: the host, its subdomains, any scheme and port, private addresses.
     pub fn allow_list(&self) -> AllowList {
         let mut list = AllowList::new();
         list.allow_entered_url(&self.url("/"))

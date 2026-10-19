@@ -87,26 +87,4 @@ impl DeviceEvent {
             Self::PollFailed { .. } => None,
         }
     }
-
-    pub fn message(&self) -> Result<String, String> {
-        match self {
-            Self::PollFailed { diagnostic } => Err(format!("Device detection: {diagnostic}")),
-            Self::Snapshot { warnings, .. } if !warnings.is_empty() => {
-                Err(format!("Device detection: {}", warnings.join("; ")))
-            }
-            Self::Snapshot { devices, .. } => Ok(match self.selected_device() {
-                Some(device) => format!(
-                    "{} selected ({})",
-                    device.name(),
-                    if device.is_mtp() {
-                        "USB / MTP".into()
-                    } else {
-                        device.mount_point.display().to_string()
-                    }
-                ),
-                None if devices.len() > 1 => "Multiple readers detected; select a device".into(),
-                None => "No reader selected".into(),
-            }),
-        }
-    }
 }

@@ -1,4 +1,4 @@
-//! Settings → Plugins and the install dialog (plan item 11): the real `view` and `update`
+//! Settings → Plugins and the install dialog: the real `view` and `update`
 //! driven through the headless simulator, with a scripted `Services` standing in for the
 //! plugin store and for GitHub. A second group of tests runs the real folder installation in
 //! a temporary directory.

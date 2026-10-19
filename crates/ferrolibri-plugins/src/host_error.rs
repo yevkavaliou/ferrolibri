@@ -10,7 +10,7 @@ pub enum HostErrorKind {
     Connect,
     Dns,
     Tls,
-    /// The domain is neither in the manifest nor entered by the user (D4).
+    /// The domain is neither in the manifest nor entered by the user.
     BlockedDomain,
     TooLarge,
     /// The per-call limit on `host.fetch` requests is exhausted.

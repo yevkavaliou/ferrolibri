@@ -1,4 +1,4 @@
-//! Installing a plugin from an address (D10): a GitHub repository, whose releases are listed
+//! Installing a plugin from an address: a GitHub repository, whose releases are listed
 //! through the API, or a `plugin.toml` at any address with the script next to it.
 //!
 //! The steps are the same as for a folder. [`RemoteInstaller`] downloads the files, checks them

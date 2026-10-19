@@ -1,4 +1,4 @@
-//! Downloading a book a plugin found and putting it into the Calibre library (D7, D8, D14).
+//! Downloading a book a plugin found and putting it into the Calibre library.
 //!
 //! [`DownloadAndAdd`] is a job for the core's `JobExecutor` (`JobRequest::External`): the core
 //! schedules it, reserves the library for writing, relays its progress and cancellation, and

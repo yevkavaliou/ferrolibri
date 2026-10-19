@@ -309,7 +309,7 @@ pub struct HttpSession {
 
 impl HttpSession {
     /// At most `max` requests (`fetch` or `open`) in this session; the next one fails with
-    /// `TooManyRequests` without touching the network (D6: 20 per plugin call).
+    /// `TooManyRequests` without touching the network (20 per plugin call).
     pub fn with_request_budget(mut self, max: u32) -> Self {
         self.budget = Some(AtomicU32::new(max));
         self

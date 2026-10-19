@@ -2218,7 +2218,7 @@ pub fn subscription(state: &State) -> Subscription<Message> {
     ])
 }
 
-/// The card under the path field for a folder that is not a ready library (design gap G1).
+/// The card under the path field for a folder that is not a ready library.
 fn setup_prompt_card(state: &State) -> Element<'_, Message> {
     let Some(prompt) = &state.setup_prompt else {
         return column![].into();

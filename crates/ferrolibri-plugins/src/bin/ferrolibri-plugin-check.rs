@@ -11,7 +11,7 @@
 //! real allow-list, validates the answer against the contract (`parse_search_page`) and prints
 //! the results, the warnings (dropped results, the plugin's own log), the number of requests
 //! and the time the call took. `--setting key=value` stores a setting as the settings form
-//! would, so an address stored this way is allowed (D4) and a `default` of the manifest is not.
+//! would, so an address stored this way is allowed and a `default` of the manifest is not.
 //!
 //! Exit code: 0 when nothing is wrong (warnings do not count), 1 for a problem, 2 for a wrong
 //! command line. Only `search` is run: `details` and `resolveDownload` are called by the app on

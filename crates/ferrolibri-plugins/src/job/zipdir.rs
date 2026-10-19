@@ -1,4 +1,4 @@
-//! Reads the table of contents of a ZIP file and nothing else (D14): no entry is ever unpacked.
+//! Reads the table of contents of a ZIP file and nothing else: no entry is ever unpacked.
 //!
 //! Only the "end of central directory" record and the central directory are read, so a
 //! multi-gigabyte archive costs a few reads. ZIP64 and multi-disk archives are refused: no book

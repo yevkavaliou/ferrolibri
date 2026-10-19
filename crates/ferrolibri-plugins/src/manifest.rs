@@ -85,7 +85,7 @@ pub struct Setting {
     #[serde(rename = "type")]
     pub kind: SettingKind,
     pub label: String,
-    /// `url` only: the host of the entered address (and its subdomains) is allowed (D4).
+    /// `url` only: the host of the entered address (and its subdomains) is allowed.
     #[serde(default)]
     pub network: bool,
     #[serde(default)]

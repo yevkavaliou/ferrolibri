@@ -1,4 +1,4 @@
-//! The name the app gives a downloaded file (D7). It is built from the title of the result and the
+//! The name the app gives a downloaded file. It is built from the title of the result and the
 //! format of the offer; a name from the plugin, from the URL or from `Content-Disposition` never
 //! reaches the file system.
 
@@ -12,7 +12,7 @@ pub const MAX_NAME_CHARS: usize = 80;
 
 const FALLBACK: &str = "book";
 
-/// `<cleaned title>.<extension>`; `.fb2.zip` for an FB2 offer wrapped in a zip (D14).
+/// `<cleaned title>.<extension>`; `.fb2.zip` for an FB2 offer wrapped in a zip.
 pub fn file_name(title: &str, format: Format, archive: Option<Archive>) -> String {
     format!("{}.{}", clean_title(title), extension(format, archive))
 }

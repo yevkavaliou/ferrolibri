@@ -10,60 +10,9 @@ use crate::{
 
 pub use crate::device_model::{DetectionEvidence, Device, DeviceEvent, DeviceId, DeviceKind};
 
-#[derive(Default)]
-pub struct DeviceState {
-    pub connected: Option<Device>,
-}
-
-impl DeviceState {
-    /// Process a device event, returning a status message.
-    pub fn handle_event(&mut self, event: DeviceEvent) -> Result<String, String> {
-        self.connected = event.selected_device().cloned();
-        event.message()
-    }
-
-    /// Find or convert a compatible file, then copy it to the device.
-    pub fn send_book(&self, book_path: &Path, author: &str) -> Result<PathBuf, crate::Error> {
-        self.send_book_with_options(book_path, author, PreparationOptions::default())
-    }
-
-    pub fn send_book_with_options(
-        &self,
-        book_path: &Path,
-        author: &str,
-        options: PreparationOptions,
-    ) -> Result<PathBuf, crate::Error> {
-        self.send_book_cancellable(
-            book_path,
-            author,
-            options,
-            &converter::CancellationToken::default(),
-        )
-    }
-
-    pub fn send_book_cancellable(
-        &self,
-        book_path: &Path,
-        author: &str,
-        options: PreparationOptions,
-        cancel: &converter::CancellationToken,
-    ) -> Result<PathBuf, crate::Error> {
-        let dev = self
-            .connected
-            .as_ref()
-            .ok_or_else(|| crate::Error::unavailable("select device", None))?;
-
-        crate::transfer::validate_device(dev)?;
-        let file = prepare_file_cancellable(book_path, dev, options, cancel)?;
-        let library = converter::library_root(book_path)?;
-        if !dev.is_mtp() {
-            converter::validate_output_dir(&library, &dev.mount_point)?;
-        }
-        crate::transfer::transfer_file(&file.path, dev, author, cancel, |_, _| {})
-    }
-}
-
 impl Device {
+    /// Where the reader keeps the books of `author`; the transfer code builds the same path.
+    #[cfg(test)]
     pub fn books_dir(&self, author: &str) -> PathBuf {
         match self.kind {
             DeviceKind::Kobo => self
@@ -114,6 +63,7 @@ pub struct PreparedFile {
 }
 
 impl PreparedFile {
+    #[cfg(test)]
     pub fn is_temporary(&self) -> bool {
         self._workspace.is_some()
     }
@@ -170,19 +120,6 @@ pub fn plan_preparation(
             error.operation = "plan reader preparation";
             error
         })
-}
-
-pub fn prepare_file(
-    book_path: &Path,
-    device: &Device,
-    options: PreparationOptions,
-) -> Result<PreparedFile, crate::Error> {
-    prepare_file_cancellable(
-        book_path,
-        device,
-        options,
-        &converter::CancellationToken::default(),
-    )
 }
 
 pub fn prepare_file_cancellable(
@@ -278,6 +215,19 @@ fn find_file(files: &[BookFile], formats: &[Format]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepare_file(
+        book_path: &Path,
+        device: &Device,
+        options: PreparationOptions,
+    ) -> Result<PreparedFile, crate::Error> {
+        prepare_file_cancellable(
+            book_path,
+            device,
+            options,
+            &converter::CancellationToken::default(),
+        )
+    }
 
     fn backend(kind: converter::BackendKind, kepub_output: bool) -> converter::Backend {
         converter::Backend {
@@ -606,13 +556,16 @@ mod tests {
     fn device_destination_cannot_be_the_library() {
         let fixture = crate::test_support::Fixture::new();
         let before = crate::test_support::snapshot(&fixture.library);
-        let state = DeviceState {
-            connected: Some(crate::test_support::device(
-                DeviceKind::Kindle,
-                &fixture.library,
-            )),
-        };
-        assert!(state.send_book(&fixture.book, "Author").is_err());
+        let executor = crate::jobs::JobExecutor::new(1, 1).unwrap();
+        let job = executor
+            .submit(crate::jobs::JobRequest::Send {
+                book: fixture.book.clone(),
+                author: "Author".into(),
+                device: crate::test_support::device(DeviceKind::Kindle, &fixture.library),
+                options: PreparationOptions::default(),
+            })
+            .unwrap();
+        assert!(job.wait().is_err());
         assert_eq!(crate::test_support::snapshot(&fixture.library), before);
     }
 

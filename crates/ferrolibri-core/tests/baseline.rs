@@ -3,7 +3,8 @@ mod test_support;
 
 use ferrolibri_core::{
     converter,
-    device::{DeviceKind, DeviceState},
+    device::DeviceKind,
+    jobs::{JobExecutor, JobRequest},
     metadata, scanner,
 };
 use test_support::Fixture;
@@ -55,11 +56,17 @@ fn public_send_rejects_synthetic_directories_without_mounted_volume() {
             fixture.kindle.join("documents"),
         ),
     ] {
-        let state = DeviceState {
-            connected: Some(test_support::device(kind, mount)),
-        };
         let before_device = test_support::snapshot(mount);
-        assert!(state.send_book(&fixture.book, "Автор Example").is_err());
+        let job = JobExecutor::new(1, 1)
+            .unwrap()
+            .submit(JobRequest::Send {
+                book: fixture.book.clone(),
+                author: "Автор Example".into(),
+                device: test_support::device(kind, mount),
+                options: Default::default(),
+            })
+            .unwrap();
+        assert!(job.wait().is_err());
         assert!(!destination.join(filename).exists());
         assert_eq!(test_support::snapshot(mount), before_device);
     }

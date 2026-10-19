@@ -1,4 +1,4 @@
-//! Search sources and the results of a plugin (plan item 12): the real `view` and `update`
+//! Search sources and the results of a plugin: the real `view` and `update`
 //! driven through the headless simulator, with a scripted `Services` standing in for the plugin
 //! runtime, and a last group that runs a real plugin against a local catalog stand-in.
 //!
@@ -515,7 +515,7 @@ fn key(named: iced::keyboard::key::Named, modifiers: iced::keyboard::Modifiers) 
     })
 }
 
-// ---- the source switch (G4) ----------------------------------------------------------------
+// ---- the source switch ----------------------------------------------------------------
 
 #[test]
 fn the_switch_is_there_once_a_plugin_is_installed_and_gone_without_one() {
@@ -745,7 +745,7 @@ fn ctrl_tab_walks_through_the_usable_sources() {
     assert_eq!(current(&state), SearchSource::Plugin("c".into()));
 }
 
-// ---- searching (G4) --------------------------------------------------------------------------
+// ---- searching --------------------------------------------------------------------------
 
 #[test]
 fn a_plugin_is_searched_on_enter_not_on_every_letter() {
@@ -877,7 +877,7 @@ fn cancel_ends_the_wait_and_says_so() {
     assert_shows(&state, &["Search cancelled."]);
 }
 
-// ---- failures and empty answers (G4) ---------------------------------------------------------
+// ---- failures and empty answers ---------------------------------------------------------
 
 #[test]
 fn a_failed_search_says_what_the_plugin_said_and_can_be_tried_again() {
@@ -1022,7 +1022,7 @@ fn a_plugin_that_needs_an_address_sends_the_user_to_its_settings() {
     );
 }
 
-// ---- results, more of them, details (G4, G5) -----------------------------------------------
+// ---- results, more of them, details -----------------------------------------------
 
 #[test]
 fn results_show_titles_authors_and_the_formats_on_offer() {

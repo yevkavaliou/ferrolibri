@@ -1,6 +1,5 @@
-//! The download icon, the "Download as" menu and the "Calibre is needed" card (design gap G6),
-//! drawn after `docs/design/mockup.html`: the same states, tooltips and words. The state itself
-//! is `crate::downloads`; this module only draws it.
+//! The download icon, the "Download as" menu and the "Calibre is needed" card,
+//! The state itself is `crate::downloads`; this module only draws it.
 use crate::{
     app::{Message, State},
     downloads::{self, Icon, Msg},
@@ -25,7 +24,7 @@ fn message(hit: &RemoteHit, offer: Option<&RemoteOffer>) -> Message {
     })
 }
 
-/// The colour of the glyph: the mockup's plain, "off", "busy", "ok" and "bad" classes.
+/// The colour of the glyph: plain, "off", "busy", "ok" and "bad" classes.
 fn tint(icon: Icon) -> Color {
     match icon {
         Icon::Idle | Icon::Queued => theme::DARK.text_secondary,

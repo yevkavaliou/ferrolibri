@@ -1,7 +1,7 @@
 //! Settings → Plugins and the install dialog: their state and the pure `update` step.
 //!
 //! Everything that touches the disk or the network goes through [`Services`]. Screens are
-//! drawn in `widgets::plugins` after `docs/design/mockup.html` (design gaps G2 and G3).
+//! drawn in `widgets::plugins`.
 use crate::{
     app::{Message, State},
     services::{
@@ -207,7 +207,7 @@ pub fn web_address_error(text: &str) -> Option<&'static str> {
     }
 }
 
-/// An address without TLS: the connection can be read and changed on the way (D4).
+/// An address without TLS: the connection can be read and changed on the way.
 pub fn is_plain_http(text: &str) -> bool {
     text.trim().to_ascii_lowercase().starts_with("http://")
 }

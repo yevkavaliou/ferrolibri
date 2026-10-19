@@ -1,9 +1,8 @@
-//! Search sources on the Search screen (plan item 12): the switch between the library and a
+//! Search sources on the Search screen: the switch between the library and a
 //! search plugin, a plugin's results, and the details of the selected result.
 //!
 //! Everything that touches a plugin or the network goes through [`Services`]; this module is
-//! the state and the pure `update` step. The screens are drawn in `widgets::remote` after
-//! `docs/design/mockup.html` (design gaps G4 and G5).
+//! the state and the pure `update` step. The screens are drawn in `widgets::remote`.
 //!
 //! * A search runs on Enter, not on every letter. Every search, "Show more", a cancel and a
 //!   change of source bumps one [`GenerationGuard`], so an answer that arrives late (A → B → A)
@@ -295,7 +294,7 @@ pub fn current(state: &State) -> SearchSource {
     active_id(state).map_or(SearchSource::Library, SearchSource::Plugin)
 }
 
-/// The switch is there once any plugin is installed (the mockup's rule), whether it is on or not.
+/// The switch is there once any plugin is installed whether it is on or not.
 pub fn switcher_visible(state: &State) -> bool {
     !state.plugins.rows.is_empty()
 }
@@ -640,7 +639,7 @@ fn select(state: &mut State, id: &str, force: bool, services: &dyn Services) -> 
     }
     state.remote.selected = Some(id.to_owned());
     state.remote.cancel_details();
-    // A result is selected to be looked at: the pane that shows it opens (the mockup's rule).
+    // A result is selected to be looked at: the pane that shows it opens.
     let mut tasks = Vec::new();
     if !state.visible_settings().details_visible {
         let mut settings = state.visible_settings().clone();

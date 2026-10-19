@@ -1,5 +1,4 @@
-//! Downloading a book that a plugin found and adding it to the library (plan item 13, design
-//! gap G6): what the download icon shows for each offer, the format menu, and the job that
+//! Downloading a book that a plugin found and adding it to the library : what the download icon shows for each offer, the format menu, and the job that
 //! `ferrolibri_plugins::DownloadAndAdd` runs.
 //!
 //! The icon is not stored: it is worked out from the job list each time it is drawn
@@ -31,7 +30,7 @@ use std::{
     sync::Arc,
 };
 
-/// Words of the mockup, shared by the toast and the tooltip.
+/// Words shared by the toast and the tooltip.
 pub const NEEDS_CALIBRE: &str = "Calibre is needed to add downloaded books";
 const NEEDS_CALIBRE_TOAST: &str =
     "Calibre is needed to add downloaded books. Install Calibre, then try again.";
@@ -44,7 +43,7 @@ pub struct Key {
     pub offer: String,
 }
 
-/// The states of the download icon (the mockup's `idle`, `nocalibre`, `none`, `queued`, `get`,
+/// The states of the download icon (`idle`, `nocalibre`, `none`, `queued`, `get`,
 /// `adding`, `done`, `exists`, `failed`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {

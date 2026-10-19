@@ -24,8 +24,8 @@ struct RawSpec {
 /// Validates the JSON `resolveDownload` returned for `offer`.
 ///
 /// `url` must be `http`/`https` and its host allowed. `archive` in the response overrides the
-/// offer's (D14); `zip` is accepted only for `FB2`, which the offer — not the response —
-/// determines. The file name is never taken from the plugin (D7).
+/// offer's; `zip` is accepted only for `FB2`, which the offer — not the response —
+/// determines. The file name is never taken from the plugin.
 pub fn parse_download_spec(
     json: &str,
     offer: &Offer,

@@ -1,5 +1,5 @@
-//! At most one request per host at a time, with a pause between two requests (D4 notes in
-//! 05-http-layer.md). Waiting is not an error: a request queues until its turn.
+//! At most one request per host at a time, with a pause between two requests.
+//! Waiting is not an error: a request queues until its turn.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};

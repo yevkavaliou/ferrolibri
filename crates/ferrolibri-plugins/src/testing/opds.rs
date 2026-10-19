@@ -1,6 +1,5 @@
-//! A stand-in for the OPDS catalog described in `research.md` ("OPDS reconnaissance",
-//! 17 October 2026). It reproduces what was observed with real requests, and nothing is fetched
-//! from the real site.
+//! A stand-in for an OPDS catalog mirror. It reproduces what was observed with real requests to
+//! such a catalog, and nothing is fetched from a real site.
 //!
 //! Observed (reproduced here):
 //! * The search entry point `/opds/search?searchTerm=Q` answers with a menu of two links
@@ -13,7 +12,7 @@
 //! * Errors are HTML: `502` and `400` with a body of about 150 bytes.
 //! * Entries carry no annotation, cover or series.
 //!
-//! **Synthetic (plausible, never observed; `research.md` lists them as unverified):** paging with
+//! **Synthetic (plausible, never observed):** paging with
 //! `rel="next"` and `pageNumber`, the HTML "book not found" page at the end of the download
 //! chain, and the `/slow` route.
 

@@ -15,7 +15,7 @@ pub struct SearchQuery {
     pub text: String,
     /// 1-based page number; plugins that paginate by cursor may ignore it.
     pub page: u32,
-    /// What the plugin returned as `next_cursor` for the previous page (D15).
+    /// What the plugin returned as `next_cursor` for the previous page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
 }
@@ -40,7 +40,7 @@ impl SearchQuery {
     }
 }
 
-/// An archive wrapped around the book file. Only `zip` around `FB2` is supported (D14).
+/// An archive wrapped around the book file. Only `zip` around `FB2` is supported.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Archive {
@@ -343,7 +343,7 @@ impl std::error::Error for ResponseError {}
 /// Validates the JSON a plugin's `search` returned.
 ///
 /// `host_allowed` tells whether a host may be contacted (manifest domains plus hosts the
-/// user entered, D4); it is applied to `cover_url`.
+/// user entered); it is applied to `cover_url`.
 pub fn parse_search_page(
     json: &str,
     host_allowed: &dyn Fn(&str) -> bool,

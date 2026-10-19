@@ -61,8 +61,8 @@ pub(super) fn ellipsis(value: &str, width: f32, size: f32) -> String {
         }
         let result = measure_ellipsis(value, width, size);
         let mut cache = cache.borrow_mut();
-        // Keep one width per string, and at most 2048 strings. Covers will use
-        // their own LRU in item 9; this cache holds only short display strings.
+        // Keep one width per string, and at most 2048 strings. Covers have
+        // their own LRU; this cache holds only short display strings.
         if cache.len() >= 2048 {
             cache.clear();
         }

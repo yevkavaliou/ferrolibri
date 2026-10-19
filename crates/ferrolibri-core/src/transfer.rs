@@ -387,31 +387,9 @@ fn c_name(name: &OsStr) -> Result<std::ffi::CString, Error> {
     c_name_io(name).map_err(|_| invalid(Path::new(name)))
 }
 
-/// Copy a prepared regular file. Progress reports actual bytes after each chunk.
+/// Copy a prepared regular file. Progress reports actual bytes after each chunk, and the
+/// mounted-volume feed is injectable; the production feed enumerates OS mounts.
 /// The caller must retain PreparedFile until this call finishes.
-pub fn transfer_file(
-    file: &Path,
-    device: &Device,
-    author: &str,
-    cancel: &CancellationToken,
-    progress: impl FnMut(u64, u64),
-) -> Result<PathBuf, Error> {
-    if device.is_mtp() {
-        return mtp::transfer(file, device, cancel, progress);
-    }
-    transfer_with(
-        file,
-        device,
-        author,
-        cancel,
-        progress,
-        validate_device,
-        |out, bytes| out.write_all(bytes),
-    )
-}
-
-/// Same transfer and validation policy with an injectable mounted-volume feed.
-/// Used by the background executor; the production feed enumerates OS mounts.
 pub(crate) fn transfer_file_with_volume_source(
     file: &Path,
     device: &Device,
@@ -699,9 +677,13 @@ mod tests {
         let report = device::detect_devices_from_volumes(&volumes);
         assert!(report.warnings.is_empty());
         let reader = report.single_device().unwrap();
-        let prepared =
-            device::prepare_file(&book.path, reader, device::PreparationOptions::default())
-                .unwrap();
+        let prepared = device::prepare_file_cancellable(
+            &book.path,
+            reader,
+            device::PreparationOptions::default(),
+            &crate::converter::CancellationToken::default(),
+        )
+        .unwrap();
         assert!(!prepared.is_temporary());
         let validate = |d: &Device| {
             let current = device::manual_device_from_volumes(&d.mount_point, d.kind, &volumes)?;

@@ -1,4 +1,4 @@
-//! Manual run of a plugin in the sandbox (plan item 6): what a plugin author, or a tester on a
+//! Manual run of a plugin in the sandbox: what a plugin author, or a tester on a
 //! new platform, does to see that a plugin answers.
 //!
 //! ```text
@@ -11,7 +11,7 @@
 //! `<plugin dir>` holds `plugin.toml` and the script. The third argument is the search text for
 //! `search`, or the JSON argument (a result, an offer) for `details` and `resolveDownload`.
 //! `--setting key=value` stores a setting as the settings form would (an address stored this way
-//! is allowed, D4). `--catalog` starts the local stand-in for an OPDS catalog and stores its
+//! is allowed). `--catalog` starts the local stand-in for an OPDS catalog and stores its
 //! address as `base_url`. The answer is printed as JSON; for `search` it is also checked against
 //! the contract and the verdict goes to stderr together with the plugin's log.
 

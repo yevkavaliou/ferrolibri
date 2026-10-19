@@ -5,7 +5,7 @@ use std::time::Duration;
 /// `plugin.toml` larger than this is rejected before parsing.
 pub const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 
-/// A plugin's script (`entry`) larger than this is not installed (D2).
+/// A plugin's script (`entry`) larger than this is not installed.
 pub const MAX_SCRIPT_BYTES: usize = 1024 * 1024;
 
 pub const MIN_ID_CHARS: usize = 2;
@@ -32,7 +32,7 @@ pub const MIN_CALL_TIMEOUT_S: u32 = 5;
 pub const MAX_CALL_TIMEOUT_S: u32 = 60;
 pub const DEFAULT_CALL_TIMEOUT_S: u32 = 30;
 
-/// JSON returned by `search`, `details` or `resolveDownload` (D6).
+/// JSON returned by `search`, `details` or `resolveDownload`.
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_HITS_PER_PAGE: usize = 100;
 pub const MAX_CURSOR_CHARS: usize = 500;
@@ -58,18 +58,18 @@ pub const MAX_OFFER_LABEL_CHARS: usize = 100;
 /// Declared size of an offered file: a plausibility check, the real limit applies to the download.
 pub const MAX_OFFER_SIZE: u64 = 2 * 1024 * 1024 * 1024;
 
-// HTTP layer (D4, D6). All network access of the app and of plugins goes through `crate::Http`.
+// HTTP layer. All network access of the app and of plugins goes through `crate::Http`.
 
-/// Body of one `host.fetch` response (D6).
+/// Body of one `host.fetch` response.
 pub const MAX_FETCH_BODY_BYTES: u64 = 8 * 1024 * 1024;
-/// Body of a streamed download performed by the app (D7).
+/// Body of a streamed download performed by the app.
 pub const MAX_DOWNLOAD_BYTES: u64 = 200 * 1024 * 1024;
 /// Redirects followed for one request; every hop is checked against the allow-list.
 pub const MAX_REDIRECTS: u32 = 5;
-/// `host.fetch` calls during one plugin call (D6).
+/// `host.fetch` calls during one plugin call.
 pub const MAX_FETCH_REQUESTS_PER_CALL: u32 = 20;
-/// Pause between two requests to the same host. The catalog under observation answered 502 under
-/// load and the cause is unknown, so requests are spaced out (research.md, OPDS reconnaissance).
+/// Pause between two requests to the same host. A catalog that was tried answered 502 under
+/// load and the cause is unknown, so requests are spaced out.
 pub const HOST_REQUEST_GAP: Duration = Duration::from_millis(250);
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// One `host.fetch`: connection, redirects, headers and body together.
@@ -78,7 +78,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_REQUEST_HEADER_VALUE_CHARS: usize = 1000;
 
-// Plugin runtime (D6). One call = one QuickJS runtime on its own thread.
+// Plugin runtime. One call = one QuickJS runtime on its own thread.
 
 /// Memory of one plugin call's QuickJS runtime.
 pub const PLUGIN_MEMORY_BYTES: usize = 64 * 1024 * 1024;
@@ -108,7 +108,7 @@ pub const MAX_LOG_MESSAGE_CHARS: usize = 2000;
 /// ... and a call writes at most this many of them.
 pub const MAX_LOG_ENTRIES_PER_CALL: u32 = 200;
 
-// Installation by address (D10).
+// Installation by address.
 
 /// Releases of a repository that are looked at (the first page of the API's answer).
 pub const MAX_RELEASES_LISTED: usize = 10;

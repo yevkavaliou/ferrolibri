@@ -1,4 +1,4 @@
-//! Calibre command-line integration (`calibredb`). See docs/CALIBRE_CLI.md.
+//! Calibre command-line integration (`calibredb`).
 //!
 //! The only way FerroLibri writes into a Calibre library: it never edits
 //! `metadata.db` or existing book folders itself.

@@ -175,7 +175,7 @@ impl Drop for DeviceWatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::{DeviceKind, DeviceState};
+    use crate::device::DeviceKind;
 
     fn reader(id: &str, path: &str) -> Device {
         let mut device = crate::test_support::device(DeviceKind::Kobo, std::path::Path::new(path));
@@ -229,10 +229,7 @@ mod tests {
         let a = reader("a", "reader-a");
         let b = reader("b", "reader-a");
         let mut tracker = DeviceTracker::default();
-        let mut state = DeviceState::default();
-        state
-            .handle_event(tracker.poll(report(vec![a.clone()])).unwrap())
-            .unwrap();
+        tracker.poll(report(vec![a.clone()])).unwrap();
         let event = tracker.poll(report(vec![b.clone()])).unwrap();
         assert_eq!(
             changes(&event),
@@ -241,8 +238,7 @@ mod tests {
                 DeviceChange::Connected(b.clone())
             ]
         );
-        state.handle_event(event).unwrap();
-        assert_eq!(state.connected, Some(b));
+        assert_eq!(event.selected_device(), Some(&b));
     }
 
     #[test]
@@ -308,15 +304,11 @@ mod tests {
     fn failed_poll_clears_selection_deduplicates_error_and_recovers() {
         let a = reader("a", "a-root");
         let mut tracker = DeviceTracker::default();
-        let mut state = DeviceState::default();
-        state
-            .handle_event(tracker.poll(report(vec![a.clone()])).unwrap())
-            .unwrap();
+        tracker.poll(report(vec![a.clone()])).unwrap();
         let failure = || Err(Error::unavailable("enumerate volumes", None));
         let event = tracker.poll(failure()).unwrap();
         assert!(matches!(event, DeviceEvent::PollFailed { .. }));
-        assert!(state.handle_event(event).is_err());
-        assert!(state.connected.is_none());
+        assert!(event.selected_device().is_none());
         assert!(tracker.select(&a.id).is_none());
         assert!(tracker.poll(failure()).is_none());
         let event = tracker.poll(report(vec![a.clone()])).unwrap();
@@ -337,8 +329,11 @@ mod tests {
                 warnings: vec![Error::unavailable("inspect volume", None)],
             }))
             .unwrap();
-        assert!(event.message().is_err());
-        assert!(tracker.poll(report(vec![])).unwrap().message().is_ok());
+        assert!(matches!(&event, DeviceEvent::Snapshot { warnings, .. } if warnings.len() == 1));
+        assert!(matches!(
+            tracker.poll(report(vec![])).unwrap(),
+            DeviceEvent::Snapshot { warnings, .. } if warnings.is_empty()
+        ));
     }
 
     #[test]

@@ -22,14 +22,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 semver = "1.0.27"
-# The plugin runtime (D1). `std` is the default feature set; nothing else is needed.
+# The plugin runtime. `std` is the default feature set; nothing else is needed.
 rquickjs = "0.14"
-# `host.html.select` and `host.xml.parse` (D3); the same pin as the core.
+# `host.html.select` and `host.xml.parse`; the same pin as the core.
 kuchikiki = "=0.8.8-speedreader"
 roxmltree = { workspace = true }
 log = "0.4"
 url = "2"
-# Where the plugins and their settings live (D11), and the SHA-256 of an installed script.
+# Where the plugins and their settings live, and the SHA-256 of an installed script.
 dirs = { workspace = true }
 sha2 = "0.10"
 # Only to recognise TLS failures: `ureq` hands them over as a bare `rustls::Error` in an `io::Error`.

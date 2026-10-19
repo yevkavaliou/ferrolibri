@@ -1,8 +1,8 @@
 //! The FerroLibri plugin contract: manifest, search result types, validation.
 //!
 //! It fixes what a plugin may declare (`plugin.toml`) and what it may return (JSON), and rejects
-//! everything else. Everything that comes from a plugin is untrusted. The reference document is
-//! `docs/PLUGIN_API.md`. The crate also holds the HTTP layer through which all network access of
+//! everything else. Everything that comes from a plugin is untrusted. The guide for plugin authors is
+//! `docs/PLUGINS.md`. The crate also holds the HTTP layer through which all network access of
 //! the app and of plugins goes ([`http`]); and the QuickJS runtime that runs plugins ([`PluginRuntime`]); and the store of installed plugins
 //! ([`PluginStore`]).
 

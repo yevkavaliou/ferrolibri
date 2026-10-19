@@ -890,7 +890,7 @@ fn fetch_accepts_get_only_and_reports_dropped_headers() {
 
 #[test]
 fn a_body_that_is_not_utf8_reads_with_replacement_characters() {
-    // windows-1251 "Война": the plugin gets U+FFFD, there is no `encoding` option in v1 (R9).
+    // windows-1251 "Война": the plugin gets U+FFFD, there is no `encoding` option in v1.
     let server = TestServer::start(|_, _| {
         Reply::ok(
             "text/html; charset=windows-1251",

@@ -1,8 +1,8 @@
 //! Decides from the bytes of a downloaded file whether it is the book that was promised.
 //!
 //! `Content-Type` is not looked at: catalogs send books as `application/zip` and errors as
-//! `text/html`, and some send an error page with status 200 (research.md, OPDS reconnaissance).
-//! Nothing is unpacked (D14); a ZIP is judged by its table of contents.
+//! `text/html`, and some send an error page with status 200 (seen with real OPDS catalogs).
+//! Nothing is unpacked; a ZIP is judged by its table of contents.
 
 use std::{
     fs::File,
@@ -83,7 +83,7 @@ fn has_entry(file: &mut File, head: &[u8], name: &[u8]) -> io::Result<bool> {
     Ok(zip_contents(file, head)?.is_ok_and(|entries| entries.iter().any(|e| e.name == name)))
 }
 
-/// D14: exactly one file, an `.fb2`, and the unpacked size within the limit. Directory entries
+/// Exactly one file, an `.fb2`, and the unpacked size within the limit. Directory entries
 /// are not files; a name that climbs out of its folder is not accepted even though nothing is
 /// unpacked here.
 fn single_fb2(entries: &[zipdir::Entry], max_unpacked: u64) -> bool {
@@ -281,7 +281,7 @@ mod tests {
             Format::Fb2,
             Some(Archive::Zip)
         ));
-        // No fb2, two files, an fb2 and something else: refused (D14).
+        // No fb2, two files, an fb2 and something else: refused.
         for archive in [
             zip_stored(&[("book.txt", b"x")]),
             zip_stored(&[("a.fb2", b"x"), ("b.fb2", b"y")]),
