@@ -3,15 +3,18 @@ name = "ferrolibri-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
 publish = false
 description = "Native iced desktop client for FerroLibri"
+keywords.workspace = true
+categories.workspace = true
 build = "build.rs"
-default-run = "ferrolibri-gui"
+default-run = "ferrolibri"
 
-# The TUI keeps `ferrolibri`; the graphical client is `ferrolibri-gui`, the name the
-# earlier Tauri client used, so existing instructions stay valid.
 [[bin]]
-name = "ferrolibri-gui"
+name = "ferrolibri"
 path = "src/main.rs"
 
 [dependencies]

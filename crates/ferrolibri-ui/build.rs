@@ -15,7 +15,7 @@ fn main() {
             "FileDescription",
             "FerroLibri: browse a Calibre library and send books to a reader",
         )
-        .set("OriginalFilename", "ferrolibri-gui.exe")
+        .set("OriginalFilename", "ferrolibri.exe")
         .set("LegalCopyright", "MIT License");
     // Version fields come from the package version (CARGO_PKG_VERSION).
     if let Err(error) = resource.compile() {

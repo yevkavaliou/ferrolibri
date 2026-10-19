@@ -6,26 +6,24 @@ I got tired of Calibre's old, complex interface and its heavy storage footprint.
 
 ## Install
 
-FerroLibri is not published on crates.io yet; build it from source (see [Build from source](#build-from-source)):
+FerroLibri is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)); build it from source (see [Build from source](#build-from-source)):
 
 ```
-cargo install --path crates/ferrolibri
+cargo install --path crates/ferrolibri-ui
 ferrolibri
 ```
-
-This installs the **TUI** (terminal) version. Conversion requires external tools; browsing and sending an existing compatible file do not. The graphical (iced) version is also built from source.
 
 On first run, you'll be prompted for your Calibre library path. The path is saved to your system default config path.
 
 ### Uninstall
 
 ```
-cargo uninstall ferrolibri
+cargo uninstall ferrolibri-ui
 ```
 
-## Desktop UI (iced)
+## Desktop UI
 
-A native desktop client built with [iced](https://iced.rs) lives in `crates/ferrolibri-ui` and is the graphical client of FerroLibri (it replaced the earlier Tauri/Leptos GUI). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. FerroLibri never writes to the Calibre library itself; the only way a book gets in is through Calibre's own `calibredb` (see [Plugins](#plugins-search-sources)).
+FerroLibri is a native desktop client built with [iced](https://iced.rs) (crate `crates/ferrolibri-ui`, executable `ferrolibri`). It browses the library as a list or a cover grid, searches live, shows metadata, converts, and sends books to a connected reader with a progress bar and a queue. FerroLibri never writes to the Calibre library itself; the only way a book gets in is through Calibre's own `calibredb` (see [Plugins](#plugins-search-sources)).
 
 Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon and Vulkan development packages listed in [`.github/workflows/ui.yml`](.github/workflows/ui.yml)):
 
@@ -33,22 +31,19 @@ Run it from a checkout (Rust 1.93.1; on Linux install the Wayland/X11, xkbcommon
 cargo run -p ferrolibri-ui --release
 ```
 
-The executable is `ferrolibri-gui`; `ferrolibri` is the terminal UI. `cargo build --release` builds the core, the TUI and the iced UI.
-
 - **Platforms:** built, linted and tested in CI on Windows, Ubuntu 24.04 and macOS. It has only been run by hand on Windows 11. Window blur is Windows-only; other systems get an opaque window.
 - **External tools:** none to browse, search or send an existing compatible file. Conversion needs Calibre's `ebook-convert` and/or [kepubify](https://pgaskin.net/kepubify/).
 - **Keyboard:** `/` search, arrows move, Shift extends, Ctrl+A selects all, `T` sends, `C` opens Convert, Ctrl+B / Ctrl+I toggle the panes, Esc closes or clears.
-- **Not supported:** MTP and network readers, a light theme, metadata editing, a right-click context menu. No physical reader has been tested with this UI.
+- **Not supported:** network readers, MTP outside Windows, a light theme, metadata editing, a right-click context menu. Checked by hand on a real reader only with a Kindle Paperwhite Signature Edition over MTP on Windows (detection, send, byte-for-byte read-back and cancellation); readers that mount as a USB drive (Kobo, Kindle) are covered by fixture folders in tests, not by real devices.
 
 ## Features
 
-- Browse all books in your Calibre library sorted by author and title
+- Browse all books in your Calibre library sorted by author and title, as a list or a cover grid
 - Search/filter with `/` across author, title, and format
 - Detail panel showing metadata parsed from `metadata.opf` (title, author, publisher, date, language, series, tags, description, identifiers)
-- Convert books between formats (`c` key) using [kepubify](https://pgaskin.net/kepubify/) or Calibre's `ebook-convert`
-- Send books to a connected e-reader (`t` key) — auto-detects Kobo and Kindle mounts
-- Mouse support: click to select books, scroll both panels
-- Keyboard focus switching between table and detail panels
+- Convert books between formats (`C`) using [kepubify](https://pgaskin.net/kepubify/) or Calibre's `ebook-convert`
+- Send books to a connected e-reader (`T`) — auto-detects Kobo and Kindle mounts and, on Windows, readers connected over MTP
+- Search more sources and download books with plugins (see [Plugins](#plugins-search-sources))
 
 ## What gets scanned
 
@@ -60,7 +55,7 @@ Excluded from scanning:
 
 ## Book conversion
 
-Press `c` on a selected book to convert it to another format. Conversion options are shown based on which tools are installed:
+Press `C` on a selected book to convert it to another format. Conversion options are shown based on which tools are installed:
 
 - **kepubify** — used for EPUB → KEPUB conversion. Install from [pgaskin.net/kepubify](https://pgaskin.net/kepubify/)
 - **ebook-convert** (Calibre) — used for other supported routes. KEPUB output is offered only when the installed tool's capability probe succeeds. Included with [Calibre](https://calibre-ebook.com/)
@@ -71,9 +66,9 @@ FerroLibri never writes to the Calibre library itself: it never imports conversi
 
 ## Readers and core API
 
-Detection enumerates mounted local filesystems on Windows, Linux and macOS and checks reader signatures. A volume label or a `documents` directory alone does not identify a reader. Kobo prefers existing KEPUB, then EPUB; Kindle prefers AZW3, then MOBI and can prepare AZW3 using Calibre. MTP and network storage are unsupported.
+Detection enumerates mounted local filesystems on Windows, Linux and macOS and checks reader signatures. A volume label or a `documents` directory alone does not identify a reader. Kobo prefers existing KEPUB, then EPUB; Kindle prefers AZW3, then MOBI and can prepare AZW3 using Calibre. On Windows, readers connected over MTP are detected through the Windows portable-device API and receive books directly; on Linux and macOS MTP is unavailable (FUSE-mounted MTP is deliberately ignored), and network storage is unsupported everywhere.
 
-The core supports explicit selection by device ID and `device::manual_device(path, kind)` for a validated mount root. The TUI and the iced UI automatically select a single recognized reader. With several readers the iced UI asks you to choose one and offers manual folder selection; the TUI does not expose a manual selection screen. Multiple readers without a prior selection require explicit selection through the core API.
+The core supports explicit selection by device ID and `device::manual_device(path, kind)` for a validated mount root. The UI automatically selects a single recognized reader. With several readers it asks you to choose one and offers manual folder selection (not for MTP readers, which have no folder). Multiple readers without a prior selection require explicit selection through the core API.
 
 Transfers copy into a temporary file on the destination and publish without overwriting. Cancellation and write failures are reported; if disconnection prevents cleanup, the error includes the partial file path. Root mount points are never recreated.
 
@@ -88,36 +83,17 @@ pwsh -File scripts/check-readiness.ps1
 pwsh -File scripts/check-ui.ps1
 ```
 
-`check-readiness.ps1` runs the core/TUI tests, strict Clippy and the native volume enumeration smoke; `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion, and `-Ui` also runs `check-ui.ps1`. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator, real-core send/cancel/conflict flows, and a release build of the whole default workspace) on Windows, Ubuntu 24.04 and macOS. No physical reader has been tested with the UI.
+`check-readiness.ps1` runs the core and plugin tests, strict Clippy and the native volume enumeration smoke; `-RealConverters` additionally tests installed Calibre with a synthetic TXT → EPUB → KEPUB conversion, and `-Ui` also runs `check-ui.ps1`. The iced UI has its own workflow (`ui.yml`: build, Clippy, tests with a headless UI simulator, real-core send/cancel/conflict flows, and a release build of the whole default workspace) on Windows, Ubuntu 24.04 and macOS. CI uses fixture folders as readers; the opt-in `#[ignore]` tests that need an attached MTP Kindle, Calibre or the internet are run by hand.
 
 ## Build from source
 
-FerroLibri ships these frontends from a single workspace:
-
-- **TUI** — the ratatui terminal interface
-- **iced UI** — the native desktop client described [above](#desktop-ui-iced) (`cargo run -p ferrolibri-ui`, binary `ferrolibri-gui`)
-
-`cargo build --release` builds both and the core library.
-
-### TUI
-
-```
-cargo install --path crates/ferrolibri
-```
-
-Or run directly from a checkout:
-
-```
-cargo run -p ferrolibri
-```
-
-### Desktop UI
+The workspace holds the core library, the plugin runtime and the [desktop UI](#desktop-ui). `cargo build --release` builds all of them; the executable is `ferrolibri`.
 
 ```
 cargo run -p ferrolibri-ui --release
 ```
 
-or `cargo install --path crates/ferrolibri-ui` to install `ferrolibri-gui`. It is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)).
+or `cargo install --path crates/ferrolibri-ui` to install `ferrolibri`. It is not published on crates.io (it depends on two patched iced crates kept in `vendor/`, see [vendor/README.md](vendor/README.md)).
 
 ## Plugins (search sources)
 
@@ -132,21 +108,11 @@ The desktop UI can search more than your library. **Plugins** add sources to the
   cargo run -p ferrolibri-plugins --bin ferrolibri-plugin-check -- examples/plugins/open-library --query dracula
   ```
 
-Plugins are not supported in the terminal (TUI) version.
-
 ### Disclaimer
 
 FerroLibri's plugin interface is a neutral tool: it lets a program you install ask a website or catalog you choose and show the answer. The project does not provide, review, endorse, host or support third-party plugins, keeps no registry of them, and has no control over the sites they ask or the files those sites offer. The plugins and instructions in this repository are for sources that publish their catalogs for programs to use and offer books lawfully (Open Library, Google Books, and Project Gutenberg's public-domain collection); the project does not accept plugins or instructions for sites that distribute books without the right to do so.
 
 You install and run a plugin at your own risk and are responsible for what you search for, download and add to your library: copyright and a site's terms of use differ from country to country and from site to site, and it is for you to make sure you may download or use a book. The software is provided "as is", without warranty of any kind (see the MIT License); the authors are not liable for what a third-party plugin does, for any damage it causes, or for the use of any plugin or source.
-
-## Extra tools
-
-A diagnostic binary is included for checking unrecognized metadata tags:
-
-```
-cargo run --bin scan_metadata -- /path/to/calibre/library
-```
 
 ## Credits and license
 

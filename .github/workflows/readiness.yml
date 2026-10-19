@@ -21,7 +21,7 @@ jobs:
           toolchain: 1.93.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Test core, TUI and native volumes
+      - name: Test core, plugins and native volumes
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force target | Out-Null
