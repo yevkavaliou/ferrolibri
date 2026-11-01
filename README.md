@@ -1,6 +1,6 @@
 # FerroLibri
 
-A fast desktop app for browsing your [Calibre](https://calibre-ebook.com/) library and getting books onto your e-reader. It opens the library Calibre already made, in place: nothing to import, nothing to migrate, and Calibre keeps working with the same folder.
+A fast, native desktop app written in **Rust** for browsing your [Calibre](https://calibre-ebook.com/) library and getting books onto your e-reader (Kindle, Kobo). A lightweight companion to Calibre for EPUB, KEPUB, AZW3 and MOBI books. It opens the library Calibre already made, in place: nothing to import, nothing to migrate, and Calibre keeps working with the same folder.
 
 > **Status: 0.x, work in progress.** FerroLibri already browses a library, converts and sends books to a reader, and searches extra sources through plugins, but it is not a complete Calibre replacement. See [Status and limits](#status-and-limits) for what has and has not been tried on real devices.
 
