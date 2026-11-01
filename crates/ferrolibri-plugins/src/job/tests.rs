@@ -910,6 +910,11 @@ fn cancelling_during_the_addition_is_a_cancellation_and_keeps_nothing() {
             }
         )
     });
+    // The stage is announced just before the adder is called: cancel only once it is running.
+    let deadline = Instant::now() + WAIT;
+    while adder.calls().is_empty() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
     handle.cancel();
     assert_cancelled(handle, Duration::from_secs(3));
     assert_eq!(std::fs::read_dir(export.path()).unwrap().count(), 0);
