@@ -18,7 +18,7 @@ try {
     # The plugin crate needs no graphics libraries, so it is checked here on every OS as well.
     & cargo clippy --locked -p ferrolibri-plugins --all-targets -- -D warnings
     if ($LASTEXITCODE -ne 0) { throw 'plugins Clippy failed' }
-    & cargo test --locked -p ferrolibri-plugins --all-targets
+    & cargo test --locked -p ferrolibri-plugins --all-targets --no-fail-fast
     if ($LASTEXITCODE -ne 0) { throw 'plugins tests failed' }
     if ($Ui) {
         # The iced client has its own workflow (.github/workflows/ui.yml) with the same script.
