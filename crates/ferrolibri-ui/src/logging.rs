@@ -14,6 +14,10 @@ const FILE_NAME: &str = "ferrolibri.log";
 const MAX_BYTES: u64 = 1024 * 1024;
 
 pub fn log_path() -> Option<PathBuf> {
+    // Fixture mode (see `RealServices::new`) keeps every file in one folder.
+    if let Some(dir) = std::env::var_os("FERROLIBRI_UI_DATA_DIR") {
+        return Some(PathBuf::from(dir).join(FILE_NAME));
+    }
     Config::path()
         .ok()
         .map(|path| path.with_file_name(FILE_NAME))

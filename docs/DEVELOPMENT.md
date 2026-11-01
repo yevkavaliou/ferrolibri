@@ -11,7 +11,7 @@ This page is for people who build, test or change FerroLibri. Users should start
 | `crates/ferrolibri-ui` | The [iced](https://iced.rs) desktop client. The executable is `ferrolibri`. |
 | `examples/plugins` | Two example plugins (`open-library`, `opds-catalog`). |
 | `vendor/` | Two patched iced crates, see [vendor/README.md](../vendor/README.md). Excluded from the workspace. |
-| `scripts/` | Verification scripts and two helpers (`make-ui-fixture.py` builds a synthetic library for manual checks, `make-ui-icon.py` generates the app icon). |
+| `scripts/` | Verification scripts and two helpers (`make-ui-fixture.py` builds a synthetic library for manual checks, `make-ui-icon.py` generates the app icon). `make-screenshot-library.py` and `capture-screenshot.ps1` make the README screenshot: a library of twenty popular books, the program started on it with an isolated profile (`FERROLIBRI_UI_DATA_DIR` keeps the settings, the window size and the log in one folder), and a picture of the window. `pwsh -File scripts/capture-screenshot.ps1 -Regenerate -RealCovers -Keys RIGHT,RIGHT,RIGHT,RIGHT,RIGHT` takes the covers from Open Library (cached in `target/`, not for the repository: they are the publishers' artwork), selects the fifth book and saves `assets/screenshot.png`. Without `-RealCovers` the covers are drawn. To set the window up by hand, run it with `-Launch` (starts the program on the library and leaves it open), arrange the window and select a book, then run it with `-Attach` (saves a picture of the running window and leaves it open). Needs Python with Pillow. |
 
 ## Build and run
 
