@@ -19,7 +19,12 @@ FerroLibri does not edit your library. It never changes `metadata.db`, covers, e
 
 ## Install
 
-There are no ready-made downloads yet, so build it from source. You need [Rust](https://rustup.rs/) (1.93.1):
+Download the archive for your system from the [Releases](https://github.com/yevkavaliou/ferrolibri/releases) page, unpack it anywhere and run `ferrolibri` (`ferrolibri.exe` on Windows). There is no installer: apart from its settings, plugins, cache and log in your user profile, nothing is written outside the folder. To remove the program, delete the folder. `SHA256SUMS.txt` on the release page lets you check the download.
+
+- **Windows (x64)** is the build that has been tried by hand. The program is **not code-signed** (a signing certificate is paid and the project does not have one yet), so Windows SmartScreen may show "Windows protected your PC" on the first start: choose *More info* → *Run anyway*.
+- **Linux (x64) and macOS (Apple silicon and Intel)** archives are built by CI and nobody has run them yet; they should work, but treat them as experimental. Linux needs the Wayland or X11, xkbcommon and Vulkan libraries of the system. On macOS the program is not signed or notarized: after unpacking, run `xattr -dr com.apple.quarantine ferrolibri` or allow it in *System Settings → Privacy & Security*.
+
+Or build it from source. You need [Rust](https://rustup.rs/) (1.93.1):
 
 ```
 cargo install --path crates/ferrolibri-ui
@@ -34,7 +39,7 @@ On first start FerroLibri asks for the folder of your Calibre library and rememb
 
 - **Keyboard:** `/` search, arrows move, Shift extends the selection, Ctrl+A selects all, `T` sends to the reader, `C` opens Convert, Ctrl+B / Ctrl+I show or hide the side panes, Esc closes or clears.
 - **Readers:** connect the reader; it appears in the reader bar. With several readers you choose one, and for a reader that mounts as a drive you can also pick its folder by hand. Kobo prefers KEPUB, then EPUB; Kindle prefers AZW3, then MOBI, and FerroLibri can prepare AZW3 with Calibre.
-- **Conversion tools:** none are needed to browse, search, or send a book the reader can already open. Converting needs Calibre's `ebook-convert` and/or kepubify; the Convert dialog tells you what is missing. Converted files are kept in a temporary workspace of the app, outside your library.
+- **Conversion tools:** none are needed to browse, search, or send a book the reader can already open. Converting needs Calibre's `ebook-convert` and/or kepubify; the Convert dialog tells you what is missing. **Convert** writes the result to the **Export folder**, which you choose the first time you convert (it can be changed in *Settings → General*); it never goes into your library. A conversion that is needed only to send a book to a reader happens in a temporary workspace that is removed afterwards.
 
 ### Plugins
 
@@ -50,11 +55,13 @@ You install and run a plugin at your own risk and are responsible for what you s
 
 ## Status and limits
 
-- **Readers:** a real device has been tried only with a **Kindle Paperwhite Signature Edition over MTP on Windows** (detection, send, byte-for-byte read-back, cancellation). **Kobo readers have not been tried on a real device**, and neither has a reader that mounts as a USB drive (older Kindles included): those paths are covered by tests with fixture folders only.
+- **Readers:** only a **Kindle Paperwhite Signature Edition over MTP on Windows** has been tried on a real device (detection, send, byte-for-byte read-back, cancellation). Kobo readers, readers that mount as a USB drive and the Linux and macOS builds should work too: the same code is covered by tests with fixture folders, and CI builds and tests on Windows, Ubuntu 24.04 and macOS. But none of this has been run on a real device or by hand yet.
 - **Reader connections:** USB drives on Windows, Linux and macOS; MTP on Windows only. Network readers are not supported.
-- **Systems:** run by hand only on Windows 11. Windows, Ubuntu 24.04 and macOS are built and tested in CI, but nobody has used the window on Linux or macOS. Window blur is Windows-only; other systems get an opaque window.
+- **Systems:** run by hand only on Windows 11. Window blur is Windows-only; other systems get an opaque window.
+- **Keyboard on macOS:** the shortcuts are written with Ctrl. How they behave on macOS (where Cmd is usual) has not been checked and may change in a later release.
+- **Interface:** English only, with a dark look.
 - **Plugins:** plugin API version 1 is the first published one; see [how it is versioned](docs/PLUGINS.md#api-versions-and-compatibility).
-- **Unsigned binaries:** future release executables will not be code-signed, so Windows SmartScreen may warn.
+- **Unsigned programs:** the release programs are not code-signed (Windows) or notarized (macOS), so the system may warn on the first start (see [Install](#install)).
 
 See the [changelog](CHANGELOG.md) for what each version brings.
 
@@ -63,6 +70,8 @@ See the [changelog](CHANGELOG.md) for what each version brings.
 FerroLibri is a Rust workspace: a core library (scanning, metadata, conversion, device detection and transfer, background jobs), a plugin runtime and the iced desktop client. Build and test instructions, the layout of the crates and how the core behaves are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md); plugins are covered by the [plugin author's guide](docs/PLUGINS.md).
 
 ## Credits and license
+
+FerroLibri is an independent project. It is not affiliated with, endorsed by or sponsored by Calibre, Amazon (Kindle), Rakuten Kobo, Open Library or Project Gutenberg; those names belong to their owners and are used here only to say what the program works with.
 
 FerroLibri started from the core of [Rulibre](https://github.com/Glydric/Rulibre) by Leonardo Migliorelli (MIT). It is an independent project with its own name, iced UI and core changes; it is not affiliated with or endorsed by the original author.
 

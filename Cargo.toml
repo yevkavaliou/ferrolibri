@@ -15,7 +15,7 @@ license = "MIT"
 repository = "https://github.com/yevkavaliou/ferrolibri"
 homepage = "https://github.com/yevkavaliou/ferrolibri"
 authors = ["Yauheni Kavaliou", "Leonardo Migliorelli"]
-description = "A lightweight replacement for Calibre — browse your library and transfer books to your e-reader."
+description = "A fast desktop browser for Calibre libraries: search, convert and send books to your e-reader."
 keywords = ["calibre", "ebook", "kindle", "kobo", "ereader"]
 categories = ["gui"]
 

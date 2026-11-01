@@ -34,7 +34,7 @@ pwsh -File scripts/check-ui.ps1
 
 `check-readiness.ps1` runs the core and plugin tests, strict Clippy and the native volume enumeration smoke; `-RealConverters` additionally tests an installed Calibre with a synthetic TXT → EPUB → KEPUB conversion, and `-Ui` also runs `check-ui.ps1`. `check-ui.ps1` checks formatting, builds the UI, runs Clippy and the tests (a headless UI simulator and real-core send/cancel/conflict flows), and tests the plugin crate. CI (`readiness.yml`, `ui.yml`) runs these on Windows, Ubuntu 24.04 and macOS and does a release build of the default workspace.
 
-CI uses fixture folders as readers. Tests marked `#[ignore]` need something CI does not have (an attached MTP Kindle, an installed Calibre or `ebook-convert`, the internet) and are run by hand, for example:
+`cargo deny check` (settings in `deny.toml`; the `Dependencies` workflow runs it on every change and weekly) checks the dependencies for known vulnerabilities, yanked crates, licenses and sources. The GitHub Actions are pinned to commit hashes; Dependabot proposes updates. CI uses fixture folders as readers. Tests marked `#[ignore]` need something CI does not have (an attached MTP Kindle, an installed Calibre or `ebook-convert`, the internet) and are run by hand, for example:
 
 ```
 cargo test -p ferrolibri-core native_mtp_roundtrip_and_cancel -- --ignored --nocapture
@@ -64,13 +64,13 @@ Core operations return a typed `Error` with an `ErrorKind`; scans separate root 
 
 ## Releasing
 
-A release is made by pushing a tag. `.github/workflows/release.yml` runs on tags `v*` and builds the Windows x64 program with the locked dependencies, then publishes a GitHub release with `ferrolibri-<tag>-windows-x64.zip` (the executable, README, LICENSE, CHANGELOG and `THIRD_PARTY_LICENSES.txt`) and `SHA256SUMS.txt`. The release notes are the section of `CHANGELOG.md` for that version; a version starting with `0.` is marked as a pre-release.
+A release is made by pushing a tag. `.github/workflows/release.yml` runs on tags `v*`, checks that the tag matches the workspace version and that `CHANGELOG.md` has a section for it, builds the program with the locked dependencies for Windows x64 (zip), Linux x64 and macOS arm64 and x64 (tar.gz), and publishes a GitHub release. Each archive `ferrolibri-<tag>-<platform>` holds the program, README, LICENSE, CHANGELOG and `THIRD_PARTY_LICENSES.txt`; `SHA256SUMS.txt` lists their sums. The release notes are the changelog section of that version plus a note about the platforms; a version starting with `0.` is marked as a pre-release. The Windows build is required; the Linux and macOS builds are allowed to fail (the archive is then missing from the release), because nobody has run them by hand.
 
 1. Put the changes under a `## <version>` heading in `CHANGELOG.md` and set `workspace.package.version` in `Cargo.toml` (and the lock file) to the same version.
 2. Make sure CI is green on the commit, merge it to `main`.
 3. `git tag v<version>` on that commit and `git push origin v<version>`. The workflow stops if the tag and the workspace version differ or the changelog has no section for the version.
 
-`scripts/third-party-licenses.py` writes the licenses of the libraries linked into the executable (it can be run by hand: `python scripts/third-party-licenses.py out.txt`). Only Windows x64 is built; the program is not code-signed.
+`scripts/third-party-licenses.py` writes the licenses of the libraries linked into the executable for a target (`python scripts/third-party-licenses.py out.txt [target-triple]`), and `scripts/package-release.py` builds the archive (`python scripts/package-release.py v0.8.0 windows-x64 target/release/ferrolibri.exe zip out.txt dist`). The programs are not code-signed or notarized.
 
 ## Plugins
 

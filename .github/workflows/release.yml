@@ -1,66 +1,120 @@
 name: Release
-# Pushing a tag such as v0.8.0 builds the Windows x64 program and publishes a GitHub release.
-# Make the tag from a commit whose checks are green. The tag must match the workspace version.
+# Pushing a tag such as v0.8.0 builds FerroLibri for Windows, Linux and macOS and publishes a GitHub
+# release with one archive per system. Make the tag from a commit whose checks are green. The tag
+# must match the workspace version and CHANGELOG.md must have a section for it.
+#
+# The Windows build is required. Linux and macOS builds are "experimental": nobody has run them by
+# hand (see the README), so a failed build of one of them does not stop the release; that archive is
+# simply missing from it.
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag matches the version and the changelog
+        id: version
+        run: |
+          version=$(cargo metadata --no-deps --locked --format-version 1 | jq -r '.packages[] | select(.name == "ferrolibri-ui") | .version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the workspace version $version" >&2
+            exit 1
+          fi
+          if ! grep -Eq "^## ${version//./\\.}( |$)" CHANGELOG.md; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, platform: windows-x64, format: zip, exe: ferrolibri.exe, experimental: false }
+          - { os: ubuntu-24.04, target: x86_64-unknown-linux-gnu, platform: linux-x64, format: tar.gz, exe: ferrolibri, experimental: true }
+          - { os: macos-latest, target: aarch64-apple-darwin, platform: macos-arm64, format: tar.gz, exe: ferrolibri, experimental: true }
+          - { os: macos-latest, target: x86_64-apple-darwin, platform: macos-x64, format: tar.gz, exe: ferrolibri, experimental: true }
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: 1.93.1
-      - uses: Swatinem/rust-cache@v2
+          targets: ${{ matrix.target }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          key: release
-      - name: The tag matches the version
-        shell: pwsh
+          python-version: '3.12'
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-${{ matrix.target }}
+      - name: Linux window and graphics libraries
+        if: runner.os == 'Linux'
         run: |
-          $meta = cargo metadata --no-deps --locked --format-version 1 | ConvertFrom-Json
-          $version = ($meta.packages | Where-Object name -eq 'ferrolibri-ui').version
-          if ("v$version" -ne $env:GITHUB_REF_NAME) {
-            throw "Tag $env:GITHUB_REF_NAME does not match the workspace version $version"
-          }
-          "VERSION=$version" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libxrandr-dev libxi-dev libxcursor-dev libxkbcommon-dev libxkbcommon-x11-dev libvulkan1 libvulkan-dev mesa-vulkan-drivers
       - name: Build
-        shell: pwsh
-        run: |
-          cargo build --release --locked -p ferrolibri-ui
-          if ($LASTEXITCODE -ne 0) { throw 'Release build failed' }
+        shell: bash
+        run: cargo build --release --locked -p ferrolibri-ui --target ${{ matrix.target }}
       - name: Licenses of the libraries in the program
-        shell: pwsh
-        run: |
-          python scripts/third-party-licenses.py THIRD_PARTY_LICENSES.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Could not collect the licenses' }
+        shell: bash
+        run: python scripts/third-party-licenses.py THIRD_PARTY_LICENSES.txt ${{ matrix.target }}
       - name: Package
-        shell: pwsh
+        shell: bash
         run: |
-          $name = "ferrolibri-$env:GITHUB_REF_NAME-windows-x64"
-          $folder = "dist/$name"
-          New-Item -ItemType Directory -Force $folder | Out-Null
-          Copy-Item target/release/ferrolibri.exe, README.md, LICENSE, CHANGELOG.md, THIRD_PARTY_LICENSES.txt $folder
-          Compress-Archive -Path $folder -DestinationPath "dist/$name.zip"
-          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $name.zip" | Out-File -Encoding ascii dist/SHA256SUMS.txt
-          # The release notes are the changelog section of this version.
-          $changelog = Get-Content CHANGELOG.md -Raw
-          $section = [regex]::Match($changelog, "(?ms)^## $([regex]::Escape($env:VERSION))\b[^\n]*\n(.*?)(?=^## |\z)")
-          if (-not $section.Success) { throw "CHANGELOG.md has no section for $env:VERSION" }
-          $notes = $section.Groups[1].Value.Trim() + "`n`n---`n`nWindows x64. Unzip and run `ferrolibri.exe`. The program is not code-signed, so Windows SmartScreen may warn on first start. SHA-256 of the zip is in `SHA256SUMS.txt`.`n"
-          $notes | Out-File -Encoding utf8 dist/notes.md
+          python scripts/package-release.py "$GITHUB_REF_NAME" ${{ matrix.platform }} \
+            target/${{ matrix.target }}/release/${{ matrix.exe }} ${{ matrix.format }} THIRD_PARTY_LICENSES.txt dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/ferrolibri-*
+          if-no-files-found: error
+
+  publish:
+    needs: [check, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums and release notes
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          cd dist
+          ls -l
+          sha256sum ferrolibri-* > SHA256SUMS.txt
+          cd ..
+          {
+            awk -v v="$VERSION" '$0 ~ "^## " v "( |$)" { found = 1; next } /^## / { found = 0 } found' CHANGELOG.md
+            echo
+            echo "---"
+            echo
+            echo "**Downloads:** one archive per system, each with the program, the README, the licenses and the changelog. SHA-256 sums are in \`SHA256SUMS.txt\`."
+            echo
+            echo "- **Windows (x64):** unzip and run \`ferrolibri.exe\`. The program is not code-signed, so SmartScreen may warn on first start."
+            echo "- **Linux (x64), macOS (Apple silicon and Intel):** experimental. These builds are made by CI and have not been run by the maintainer. Linux needs the system's Wayland or X11, xkbcommon and Vulkan libraries. On macOS the program is not signed or notarized: after unpacking, run \`xattr -dr com.apple.quarantine ferrolibri\` or allow it in System Settings → Privacy & Security."
+          } > dist/notes.md
       - name: Publish the release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
-          $flags = @()
-          if ($env:VERSION.StartsWith('0.') -or $env:VERSION.Contains('-')) { $flags += '--prerelease' }
-          gh release create $env:GITHUB_REF_NAME (Get-ChildItem dist/*.zip) dist/SHA256SUMS.txt `
-            --title "FerroLibri $env:VERSION" --notes-file dist/notes.md @flags
-          if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
+          flags=()
+          case "$VERSION" in 0.*|*-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/ferrolibri-* dist/SHA256SUMS.txt \
+            --title "FerroLibri $VERSION" --notes-file dist/notes.md "${flags[@]}"

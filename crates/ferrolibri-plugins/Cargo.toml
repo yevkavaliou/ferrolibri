@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
+publish = false
 description = "Plugins for FerroLibri — contract, HTTP layer and the QuickJS sandbox that runs them."
 
 [lib]
