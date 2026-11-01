@@ -6,9 +6,13 @@ name: Release
 # The Windows build is required. Linux and macOS builds are "experimental": nobody has run them by
 # hand (see the README), so a failed build of one of them does not stop the release; that archive is
 # simply missing from it.
+#
+# Started by hand (Actions -> Release -> Run workflow, or `gh workflow run release.yml`) it builds and
+# packs everything but publishes nothing: the archives are kept as artifacts of the run for a week.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,13 +22,15 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The tag matches the version and the changelog
         id: version
         run: |
           version=$(cargo metadata --no-deps --locked --format-version 1 | jq -r '.packages[] | select(.name == "ferrolibri-ui") | .version')
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+          tag="v$version"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$tag" != "$GITHUB_REF_NAME" ]; then
             echo "Tag $GITHUB_REF_NAME does not match the workspace version $version" >&2
             exit 1
           fi
@@ -33,6 +39,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
   build:
     needs: check
@@ -72,16 +79,18 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          python scripts/package-release.py "$GITHUB_REF_NAME" ${{ matrix.platform }} \
+          python scripts/package-release.py "${{ needs.check.outputs.tag }}" ${{ matrix.platform }} \
             target/${{ matrix.target }}/release/${{ matrix.exe }} ${{ matrix.format }} THIRD_PARTY_LICENSES.txt dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.platform }}
           path: dist/ferrolibri-*
           if-no-files-found: error
+          retention-days: 7
 
   publish:
     needs: [check, build]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
