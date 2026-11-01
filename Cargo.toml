@@ -15,8 +15,8 @@ license = "MIT"
 repository = "https://github.com/yevkavaliou/ferrolibri"
 homepage = "https://github.com/yevkavaliou/ferrolibri"
 authors = ["Yauheni Kavaliou", "Leonardo Migliorelli"]
-description = "A fast desktop browser for Calibre libraries: search, convert and send books to your e-reader."
-keywords = ["calibre", "ebook", "kindle", "kobo", "ereader"]
+description = "A fast Rust desktop browser for Calibre libraries: search, convert and send books to your e-reader."
+keywords = ["calibre", "ebook", "kindle", "kobo", "rust"]
 categories = ["gui"]
 
 [workspace.dependencies]
