@@ -1,0 +1,66 @@
+name: Release
+# Pushing a tag such as v0.8.0 builds the Windows x64 program and publishes a GitHub release.
+# Make the tag from a commit whose checks are green. The tag must match the workspace version.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: The tag matches the version
+        shell: pwsh
+        run: |
+          $meta = cargo metadata --no-deps --locked --format-version 1 | ConvertFrom-Json
+          $version = ($meta.packages | Where-Object name -eq 'ferrolibri-ui').version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag $env:GITHUB_REF_NAME does not match the workspace version $version"
+          }
+          "VERSION=$version" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+      - name: Build
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p ferrolibri-ui
+          if ($LASTEXITCODE -ne 0) { throw 'Release build failed' }
+      - name: Licenses of the libraries in the program
+        shell: pwsh
+        run: |
+          python scripts/third-party-licenses.py THIRD_PARTY_LICENSES.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Could not collect the licenses' }
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "ferrolibri-$env:GITHUB_REF_NAME-windows-x64"
+          $folder = "dist/$name"
+          New-Item -ItemType Directory -Force $folder | Out-Null
+          Copy-Item target/release/ferrolibri.exe, README.md, LICENSE, CHANGELOG.md, THIRD_PARTY_LICENSES.txt $folder
+          Compress-Archive -Path $folder -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii dist/SHA256SUMS.txt
+          # The release notes are the changelog section of this version.
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $section = [regex]::Match($changelog, "(?ms)^## $([regex]::Escape($env:VERSION))\b[^\n]*\n(.*?)(?=^## |\z)")
+          if (-not $section.Success) { throw "CHANGELOG.md has no section for $env:VERSION" }
+          $notes = $section.Groups[1].Value.Trim() + "`n`n---`n`nWindows x64. Unzip and run `ferrolibri.exe`. The program is not code-signed, so Windows SmartScreen may warn on first start. SHA-256 of the zip is in `SHA256SUMS.txt`.`n"
+          $notes | Out-File -Encoding utf8 dist/notes.md
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $flags = @()
+          if ($env:VERSION.StartsWith('0.') -or $env:VERSION.Contains('-')) { $flags += '--prerelease' }
+          gh release create $env:GITHUB_REF_NAME (Get-ChildItem dist/*.zip) dist/SHA256SUMS.txt `
+            --title "FerroLibri $env:VERSION" --notes-file dist/notes.md @flags
+          if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }

@@ -2,7 +2,7 @@
 
 ## 0.8.0 (unreleased)
 
-The first release with a stable shape: a native desktop client for a Calibre library. It is a 0.x release, not a complete Calibre replacement.
+The first public release: a native desktop client for a Calibre library. It is a 0.x release, not a complete Calibre replacement.
 
 ### Added
 
