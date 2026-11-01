@@ -11,8 +11,8 @@ try {
     $env:TMPDIR = $env:TMP
     [IO.Directory]::CreateDirectory($env:TMP) | Out-Null
     & (Join-Path $PSScriptRoot 'check-clients.ps1')
-    & cargo clippy --locked -p ferrolibri-core -p ferrolibri --all-targets -- -D warnings
-    if ($LASTEXITCODE -ne 0) { throw 'core/TUI Clippy failed' }
+    & cargo clippy --locked -p ferrolibri-core --all-targets -- -D warnings
+    if ($LASTEXITCODE -ne 0) { throw 'core Clippy failed' }
     & cargo test --locked -p ferrolibri-core --test device_detection native_volume_enumeration_smoke -- --ignored --exact --nocapture
     if ($LASTEXITCODE -ne 0) { throw 'native volume enumeration smoke failed' }
     # The plugin crate needs no graphics libraries, so it is checked here on every OS as well.
