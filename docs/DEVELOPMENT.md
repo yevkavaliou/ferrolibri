@@ -62,6 +62,16 @@ Transfers to a drive copy into a temporary file on the destination and publish w
 
 Core operations return a typed `Error` with an `ErrorKind`; scans separate root errors from per-book warnings. `JobExecutor` runs scans, metadata reads, conversions, transfers and external jobs (such as plugin downloads) on bounded worker threads. It exposes job IDs, states and events, reserves the paths and devices a job uses so conflicting jobs never run together, and supports cancellation. Copy progress reports bytes, conversion progress reports stages. Shutdown cancels work and joins the workers, but may wait for an uninterruptible OS call.
 
+## Releasing
+
+A release is made by pushing a tag. `.github/workflows/release.yml` runs on tags `v*` and builds the Windows x64 program with the locked dependencies, then publishes a GitHub release with `ferrolibri-<tag>-windows-x64.zip` (the executable, README, LICENSE, CHANGELOG and `THIRD_PARTY_LICENSES.txt`) and `SHA256SUMS.txt`. The release notes are the section of `CHANGELOG.md` for that version; a version starting with `0.` is marked as a pre-release.
+
+1. Put the changes under a `## <version>` heading in `CHANGELOG.md` and set `workspace.package.version` in `Cargo.toml` (and the lock file) to the same version.
+2. Make sure CI is green on the commit, merge it to `main`.
+3. `git tag v<version>` on that commit and `git push origin v<version>`. The workflow stops if the tag and the workspace version differ or the changelog has no section for the version.
+
+`scripts/third-party-licenses.py` writes the licenses of the libraries linked into the executable (it can be run by hand: `python scripts/third-party-licenses.py out.txt`). Only Windows x64 is built; the program is not code-signed.
+
 ## Plugins
 
 The contract, the sandbox and the limits are described for authors in [PLUGINS.md](PLUGINS.md); the code is in `crates/ferrolibri-plugins`. `ferrolibri-plugin-check` checks a plugin folder, and `crates/ferrolibri-plugins/tests/examples.rs` shows how to test a plugin without the internet using a local test server (`ferrolibri_plugins::testing`).
