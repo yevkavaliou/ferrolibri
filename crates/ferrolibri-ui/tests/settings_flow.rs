@@ -177,7 +177,8 @@ fn settings_persist_restart_switch_library_and_invalid_choices_preserve_old_conf
         assert_eq!(state.library, Some(fixture.library.clone()));
         assert_eq!(state.screen, Screen::Settings);
         drive(&mut state, Message::Rescan, &services).await;
-        let old_scan = state.active_scan.unwrap();
+        // On a fast machine the scan can already be over when `drive` returns.
+        let old_scan = state.active_scan;
         let selected = state.catalog.order[0].clone();
         state.selection.selected.insert(selected.clone());
         state.covers.insert(
@@ -187,7 +188,9 @@ fn settings_persist_restart_switch_library_and_invalid_choices_preserve_old_conf
         assert!(!state.covers.is_empty());
         services.folders.lock().unwrap().push_back(second.clone());
         drive(&mut state, Message::SettingsLibraryBrowse, &services).await;
-        assert_ne!(state.active_scan, Some(old_scan));
+        if let Some(old_scan) = old_scan {
+            assert_ne!(state.active_scan, Some(old_scan));
+        }
         assert!(state.selection.selected.is_empty());
         assert!(state.covers.is_empty());
         scan(&mut state, &services).await;

@@ -1027,7 +1027,9 @@ fn a_plugin_that_needs_an_address_sends_the_user_to_its_settings() {
 #[test]
 fn results_show_titles_authors_and_the_formats_on_offer() {
     let mut mars = hit("h4", "A Princess of Mars");
-    mars.authors = vec!["Edgar Rice Burroughs".into()];
+    // Short on purpose: the row shortens a long name by the width of the text, and the fonts of
+    // a machine without the usual ones are wider.
+    mars.authors = vec!["H. G. Wells".into()];
     mars.offers = vec![offer("o1", "EPUB", None), offer("o2", "AZW3", None)];
     let fake = Fake::with_rows(vec![standard_ebooks()]);
     let mut state = with_source(&fake, "standard-ebooks");
@@ -1039,7 +1041,7 @@ fn results_show_titles_authors_and_the_formats_on_offer() {
             "Pride and Prejudice",
             "Jane Austen",
             "A Princess of Mars",
-            "Edgar Rice Burroughs",
+            "H. G. Wells",
             "EPUB",
             "2 results for “p” · Standard Ebooks",
             "End of results",
