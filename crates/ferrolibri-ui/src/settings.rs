@@ -125,6 +125,10 @@ impl WindowSize {
         })
     }
     pub fn path() -> Result<PathBuf, Error> {
+        // Fixture mode keeps every file in one folder and must not touch the user's profile.
+        if let Some(dir) = std::env::var_os("FERROLIBRI_UI_DATA_DIR") {
+            return Ok(PathBuf::from(dir).join("window.toml"));
+        }
         Ok(UiSettings::path()?.with_file_name("window.toml"))
     }
     /// A missing or unreadable file gives the default size: a window must always open.
