@@ -1,0 +1,47 @@
+# Checked by `cargo deny check` (see .github/workflows/deny.yml): known vulnerabilities, licenses,
+# and where the crates come from.
+[graph]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+]
+
+[advisories]
+# A crate that is no longer maintained is a warning, not a failure.
+unmaintained = "workspace"
+yanked = "deny"
+
+[licenses]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "0BSD",
+    "CC0-1.0",
+    "BSL-1.0",
+    "Unlicense",
+    "NCSA",
+    "CDLA-Permissive-2.0",
+    # Weak copyleft, used unmodified: cssparser, cssparser-macros, dtoa-short, option-ext, selectors.
+    "MPL-2.0",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+# Crates of this workspace refer to each other by path, without a version.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
