@@ -41,7 +41,7 @@ iced_test = "0.14"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 window-vibrancy = "0.8"
-libloading = "0.8"
+libloading = "0.9"
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 window-vibrancy = "0.8"
