@@ -23,7 +23,7 @@ categories = ["gui"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"
-dirs = "6"
+dirs = "7"
 roxmltree = "0.21"
 
 # Two small patches to iced 0.14 let Windows present through DirectComposition

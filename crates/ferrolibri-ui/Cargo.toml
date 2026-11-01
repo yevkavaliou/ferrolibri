@@ -28,7 +28,7 @@ toml.workspace = true
 tokio = { version = "1", features = ["rt", "sync"] }
 rfd = "0.17"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
-dirs = "6"
+dirs = "7"
 sha2 = "0.10"
 log = "0.4"
 
