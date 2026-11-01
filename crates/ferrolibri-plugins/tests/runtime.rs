@@ -957,6 +957,9 @@ fn requests_to_one_host_never_overlap_even_from_parallel_calls() {
     let server =
         TestServer::start(|_, _| Reply::ok("text/plain", "ok").delay(Duration::from_millis(30)));
     let (runtime, _) = runtime(&server);
+    // The twelve requests wait for each other (250 ms apart) and take several seconds; a slow
+    // machine must not run into the short cap the other tests use.
+    let runtime = runtime.with_max_call_time(Duration::from_secs(30));
     let plugin = inline(
         "export function search(q, ctx) { for (let i = 0; i < 3; i++) host.fetch(ctx.settings.base_url);\n\
          return {}; }",
