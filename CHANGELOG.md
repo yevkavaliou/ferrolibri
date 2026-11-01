@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 (unreleased)
+## 0.8.0 (2026-11-01)
 
 The first public release: a native desktop client for a Calibre library. It is a 0.x release, not a complete Calibre replacement.
 
