@@ -99,7 +99,9 @@ pub fn standard_dirs() -> Vec<PathBuf> {
     standard_dirs_from(|name| std::env::var_os(name))
 }
 
+// Which entries exist depends on the system, so on some systems there is a single `push`.
 #[cfg_attr(not(windows), allow(unused_variables))]
+#[allow(clippy::vec_init_then_push)]
 fn standard_dirs_from(env: impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     #[cfg(windows)]
