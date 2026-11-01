@@ -9,7 +9,7 @@ description = "Searches an OPDS catalog the user names in the settings."
 search_hint = "Search by title only"
 content = ["metadata", "public-domain"]
 
-# No domains of its own: the catalog is whatever address the user enters (D4).
+# No domains of its own: the catalog is whatever address the user enters.
 
 [[settings]]
 key = "base_url"

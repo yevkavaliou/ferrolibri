@@ -1,6 +1,6 @@
 //! Test support: a scriptable local HTTP server and a stand-in for the OPDS catalog.
 //!
-//! Compiled for this crate's own tests and, for other crates (plan items 6 and 9), behind the
+//! Compiled for this crate's own tests and, for other crates, behind the
 //! `test-support` feature:
 //!
 //! ```toml

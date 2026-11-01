@@ -1,5 +1,5 @@
-// A search plugin for an OPDS catalog, written against the shape of a real mirror
-// (plans/plugins/research.md): searching is two steps (a menu, then the results), feeds use
+// A search plugin for an OPDS catalog, written against the shape of a real mirror:
+// searching is two steps (a menu, then the results), feeds use
 // relative links, and a download is offered as a zip around an FB2 file.
 
 // GET with a few tries: this kind of server answers 502/503 now and then.

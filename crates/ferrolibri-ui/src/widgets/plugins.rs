@@ -1,5 +1,4 @@
-//! Settings → Plugins (design gap G2) and the install dialog (G3), drawn after
-//! `docs/design/mockup.html`. The texts are the mockup's.
+//! Settings → Plugins and the install dialog.
 use crate::{
     app::{Message, State},
     icons,
@@ -472,7 +471,7 @@ fn field_view<'a>(
                     "FerroLibri lets this plugin contact the host of this address, and its subdomains, only once you save it here.",
                 ));
             }
-            // D4: an address without TLS is allowed, but the user is told.
+            // An address without TLS is allowed, but the user is told.
             if error.is_none() && field.kind == FieldKind::Url && is_plain_http(current) {
                 column = column.push(
                     text("This address does not use https: the connection is not encrypted.")

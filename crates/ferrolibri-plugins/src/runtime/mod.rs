@@ -1,7 +1,7 @@
 //! The plugin runtime: runs a plugin's JavaScript in a sandbox and returns what it answered.
 //!
-//! One call is one thread with its own QuickJS runtime (D5), limited in memory, stack and time
-//! (D6). The plugin sees nothing but the language and the `host` object (D3); `eval` from strings
+//! One call is one thread with its own QuickJS runtime, limited in memory, stack and time
+//!. The plugin sees nothing but the language and the `host` object; `eval` from strings
 //! is disabled (see `worker`). What a call returns is untrusted JSON that the caller validates
 //! with [`crate::parse_search_page`], [`crate::SearchHit::with_details`] or
 //! [`crate::parse_download_spec`].
@@ -33,12 +33,12 @@ pub struct LoadedPlugin {
     pub source: String,
     /// The values stored from the plugin's settings form, by `key`. Only `url` settings with
     /// `network = true` open the network, and only what is stored here counts: a `default` of the
-    /// manifest is passed to the plugin but is not an address the user entered (D4).
+    /// manifest is passed to the plugin but is not an address the user entered.
     pub settings: BTreeMap<String, SettingValue>,
 }
 
 impl LoadedPlugin {
-    /// The hosts this plugin's network access reaches (D4): the domains of its manifest plus the
+    /// The hosts this plugin's network access reaches: the domains of its manifest plus the
     /// `url` settings with `network = true` that the user filled in. The same list serves the
     /// plugin's own requests and the download of the file it pointed to.
     pub fn allow_list(&self) -> Result<AllowList, AllowListError> {

@@ -107,7 +107,7 @@ pub struct SettingField {
     pub key: String,
     pub label: String,
     pub kind: FieldKind,
-    /// `url` only: the address, once saved, opens the network for its host (D4).
+    /// `url` only: the address, once saved, opens the network for its host.
     pub network: bool,
     /// What the form shows: the saved value, else the manifest's `default`. The default of an
     /// address that opens the network is not shown as a value (it only counts when the user
@@ -261,7 +261,7 @@ pub struct Installed {
     pub turned_on: bool,
 }
 
-// ---- Search sources (plan item 12) -----------------------------------------------------------
+// ---- Search sources -----------------------------------------------------------
 
 pub type SourceFuture<T> = Pin<Box<dyn Future<Output = Result<T, SourceError>> + Send>>;
 
@@ -308,7 +308,7 @@ impl SourceError {
     }
 }
 
-/// One thing the source offers to download for a result. Downloading is item 13.
+/// One thing the source offers to download for a result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemoteOffer {
     pub id: String,
@@ -406,7 +406,7 @@ pub struct RemotePage {
     pub dropped: usize,
 }
 
-// ---- Downloads (plan item 13) ----------------------------------------------------------------
+// ---- Downloads ----------------------------------------------------------------
 
 /// One offer of one result, to be downloaded into one library.
 #[derive(Clone, Debug)]

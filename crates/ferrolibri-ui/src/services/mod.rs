@@ -289,7 +289,7 @@ impl RealServices {
             UiSettings::path().map_err(|e| e.to_string())?,
         )
         .map(|services| {
-            // Plugins live in the user's data directory (D11), not next to `ui.toml`.
+            // Plugins live in the user's data directory, not next to `ui.toml`.
             match ferrolibri_plugins::PluginStore::default_location() {
                 Ok(store) => services.with_plugin_store(store),
                 Err(_) => services,

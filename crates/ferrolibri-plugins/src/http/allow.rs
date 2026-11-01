@@ -1,4 +1,4 @@
-//! Which URLs a request may go to (D4).
+//! Which URLs a request may go to.
 
 use std::fmt;
 use std::net::IpAddr;
@@ -29,7 +29,7 @@ enum Entered {
 /// The set of hosts one caller (a plugin call, or the app itself) may reach.
 ///
 /// Built from the manifest's `network.domains` plus the hosts of `url` settings with
-/// `network = true` (the address typed by the user and, per D4, all its subdomains).
+/// `network = true` (the address typed by the user and all its subdomains).
 #[derive(Clone, Debug, Default)]
 pub struct AllowList {
     rules: Vec<DomainRule>,
@@ -95,7 +95,7 @@ impl AllowList {
         Ok(())
     }
 
-    /// Allows the host of an address the user typed, and its subdomains (D4). A leading `www.`
+    /// Allows the host of an address the user typed, and its subdomains. A leading `www.`
     /// is dropped, so `www.example.org` allows `example.org` and `static.example.org` too.
     /// An IP address allows only itself. An empty string is ignored.
     pub fn allow_entered_url(&mut self, input: &str) -> Result<(), AllowListError> {

@@ -9,7 +9,6 @@ use ferrolibri_ui::{
     app,
     services::{RealServices, Services},
 };
-mod screens;
 
 fn main() -> iced::Result {
     ferrolibri_ui::blur::prepare_environment();

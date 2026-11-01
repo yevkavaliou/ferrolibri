@@ -64,7 +64,7 @@ impl GithubEndpoint {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ReleaseOptions {
-    /// Prereleases are hidden unless this is set (D10).
+    /// Prereleases are hidden unless this is set.
     pub include_prereleases: bool,
 }
 

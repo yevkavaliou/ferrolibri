@@ -1,6 +1,6 @@
 //! What happens on the thread of one plugin call: build the runtime, load the plugin, call it.
 //!
-//! **No `eval` from strings (decision of item 6, shared.md).** The plugin's source is compiled to
+//! **No `eval` from strings.** The plugin's source is compiled to
 //! bytecode in a throw-away context that has the evaluator, and run in a context that does not:
 //! there `eval`, `new Function(…)` and the `AsyncFunction`/`GeneratorFunction` constructors fail
 //! with "eval is not supported" and `import()` finds no loader. Nothing a plugin legitimately
@@ -200,7 +200,7 @@ fn call<'js>(
     to_json(ctx, value, name)
 }
 
-/// The addresses the user typed into `url` settings that open the network (D4). A default of the
+/// The addresses the user typed into `url` settings that open the network. A default of the
 /// manifest is not an entered address: only what the settings form stored counts.
 pub(super) fn entered_addresses(plugin: &LoadedPlugin) -> Vec<String> {
     plugin

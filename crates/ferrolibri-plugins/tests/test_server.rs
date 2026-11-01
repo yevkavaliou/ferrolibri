@@ -1,4 +1,4 @@
-//! The test server as a dependant crate sees it (plan items 6 and 9): through the public API and
+//! The test server as a dependant crate sees it: through the public API and
 //! the `test-support` feature only.
 
 use ferrolibri_core::converter::CancellationToken;

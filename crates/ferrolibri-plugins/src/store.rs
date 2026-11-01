@@ -1,4 +1,4 @@
-//! Installed plugins: where they live, whether they are enabled, their settings (D2, D11).
+//! Installed plugins: where they live, whether they are enabled, their settings.
 //!
 //! `<data_dir>/dev.yevkavaliou.ferrolibri/plugins/<id>/` holds `plugin.toml`, the script and
 //! `install.json`; `<config_dir>/dev.yevkavaliou.ferrolibri/plugins.toml` holds the switches and
@@ -98,7 +98,7 @@ impl PluginStore {
         }
     }
 
-    /// The store at its place in the user's data and config directories (D11).
+    /// The store at its place in the user's data and config directories.
     pub fn default_location() -> Result<Self, Error> {
         let data =
             dirs::data_dir().ok_or_else(|| Error::unavailable("locate data directory", None))?;

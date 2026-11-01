@@ -1,9 +1,8 @@
-//! The Search screen with a plugin as its source (design gaps G4 and G5), drawn after
-//! `docs/design/mockup.html`: the source switch, the states of a search, the rows and cards of
-//! results, and the pane with the details of the selected one. The texts are the mockup's.
+//! The Search screen with a plugin as its source: the source switch, the states of a search,
+//! the rows and cards of results, and the pane with the details of the selected one.
 //!
 //! The download icon on rows, cards and offers, the format menu and the "Calibre is needed"
-//! card (design gap G6, item 13) are in `widgets::downloads`; this module places them.
+//! card are in `widgets::downloads`; this module places them.
 use crate::{
     app::{Message, State},
     icons,
@@ -35,7 +34,7 @@ fn muted<'a>(state: &State, content: impl Into<String>) -> iced::widget::Text<'a
         .color(theme::DARK.text_muted)
 }
 
-// ---- the source switch (G4) -----------------------------------------------------------------
+// ---- the source switch -----------------------------------------------------------------
 
 /// "Library" and one button per plugin, left of the search field. Up to three sources are
 /// buttons side by side; more are a drop-down list. A plugin that is off or not compatible is
@@ -293,7 +292,7 @@ fn loading<'a>(state: &State, plugin: &PluginRow, query: &str) -> Element<'a, Me
     .into()
 }
 
-/// The words of a failure, as the mockup has them: "<plugin>: <what happened>". A failure to
+/// The words of a failure: "<plugin>: <what happened>". A failure to
 /// connect names the host and points at the address in the plugin's settings.
 fn failure_text(plugin: &PluginRow, error: &SourceError) -> String {
     match error.kind {
@@ -627,7 +626,7 @@ fn grid<'a>(state: &'a State, plugin: &'a PluginRow) -> Element<'a, Message> {
     .into()
 }
 
-// ---- the details pane (G5) --------------------------------------------------------------------
+// ---- the details pane --------------------------------------------------------------------
 
 pub(super) fn size_text(size: Option<u64>) -> String {
     match size {

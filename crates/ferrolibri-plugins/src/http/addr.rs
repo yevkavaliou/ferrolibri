@@ -1,4 +1,4 @@
-//! Which addresses a request may connect to (D4).
+//! Which addresses a request may connect to.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 

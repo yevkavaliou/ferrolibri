@@ -1,6 +1,6 @@
 //! Installing a plugin from a folder in two steps: [`PluginStore::inspect_local`] reads only
 //! the manifest and tells what the plugin is and asks for; [`PluginStore::install`] copies it
-//! into the store, atomically (D2, D11).
+//! into the store, atomically.
 
 use std::{
     fs,

@@ -101,8 +101,8 @@ The desktop UI can search more than your library. **Plugins** add sources to the
 
 * **Install:** Settings → Plugins → *Install plugin…* — from a folder, or from a web address such as a GitHub repository (its releases are listed and checked for compatibility before anything is downloaded). A plugin is two files, `plugin.toml` and `plugin.js`. It runs in a sandbox and reaches only the sites it declares, which the install dialog lists.
 * **Adding books needs Calibre.** A downloaded book goes into the library through Calibre's `calibredb` command, so Calibre has to be installed; without it you can still search and open the page of a result. Books are never written to the library any other way.
-* **Examples:** [`examples/plugins/`](examples/plugins/README.md) has three: Open Library, Google Books (data only) and an OPDS catalog (Project Gutenberg, public-domain books, with downloads).
-* **Writing a plugin:** see the [plugin author's guide](docs/PLUGINS.md). The `ferrolibri-plugin-check` tool checks a plugin folder (manifest, compatibility, a real `search`, the number of requests and the time it took):
+* **Examples:** [`examples/plugins/`](examples/plugins/README.md) has two: Open Library (data only) and an OPDS catalog (Project Gutenberg, public-domain books, with downloads).
+* **Writing a plugin:** see the [plugin author's guide](docs/PLUGINS.md), which also describes how the plugin API is versioned. The `ferrolibri-plugin-check` tool checks a plugin folder (manifest, compatibility, a real `search`, the number of requests and the time it took):
 
   ```
   cargo run -p ferrolibri-plugins --bin ferrolibri-plugin-check -- examples/plugins/open-library --query dracula
@@ -110,7 +110,7 @@ The desktop UI can search more than your library. **Plugins** add sources to the
 
 ### Disclaimer
 
-FerroLibri's plugin interface is a neutral tool: it lets a program you install ask a website or catalog you choose and show the answer. The project does not provide, review, endorse, host or support third-party plugins, keeps no registry of them, and has no control over the sites they ask or the files those sites offer. The plugins and instructions in this repository are for sources that publish their catalogs for programs to use and offer books lawfully (Open Library, Google Books, and Project Gutenberg's public-domain collection); the project does not accept plugins or instructions for sites that distribute books without the right to do so.
+FerroLibri's plugin interface is a neutral tool: it lets a program you install ask a website or catalog you choose and show the answer. The project does not provide, review, endorse, host or support third-party plugins, keeps no registry of them, and has no control over the sites they ask or the files those sites offer. The plugins and instructions in this repository are for sources that publish their catalogs for programs to use and offer books lawfully (Open Library and Project Gutenberg's public-domain collection); the project does not accept plugins or instructions for sites that distribute books without the right to do so.
 
 You install and run a plugin at your own risk and are responsible for what you search for, download and add to your library: copyright and a site's terms of use differ from country to country and from site to site, and it is for you to make sure you may download or use a book. The software is provided "as is", without warranty of any kind (see the MIT License); the authors are not liable for what a third-party plugin does, for any damage it causes, or for the use of any plugin or source.
 

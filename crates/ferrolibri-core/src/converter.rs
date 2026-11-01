@@ -325,10 +325,6 @@ pub(crate) fn executable(program: &str) -> io::Result<Option<PathBuf>> {
     Ok(None)
 }
 
-pub fn available_backends() -> Vec<Backend> {
-    available_backends_cancellable(&CancellationToken::default())
-}
-
 pub fn available_backends_cancellable(cancel: &CancellationToken) -> Vec<Backend> {
     [BackendKind::Kepubify, BackendKind::EbookConvert]
         .into_iter()
@@ -1239,7 +1235,7 @@ mod tests {
         let source = fixture.library.join("Zed/Second book (43)/Second book.txt");
         let epub = convert(&fixture.library, workspace.path(), &source, Format::Epub).unwrap();
         assert!(epub.size > 0);
-        let tools = available_backends()
+        let tools = available_backends_cancellable(&CancellationToken::default())
             .into_iter()
             .filter(|tool| tool.kind == BackendKind::EbookConvert)
             .collect::<Vec<_>>();

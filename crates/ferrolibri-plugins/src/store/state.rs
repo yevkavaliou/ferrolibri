@@ -1,4 +1,4 @@
-//! `plugins.toml`: which installed plugins are enabled and the values of their settings (D11).
+//! `plugins.toml`: which installed plugins are enabled and the values of their settings.
 
 use std::{collections::BTreeMap, fs, io, path::Path};
 

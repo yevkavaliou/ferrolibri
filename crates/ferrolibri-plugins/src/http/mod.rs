@@ -1,4 +1,4 @@
-//! The HTTP layer: the only way the app and its plugins reach the network (D3, D4).
+//! The HTTP layer: the only way the app and its plugins reach the network.
 //!
 //! * [`AllowList`] says which hosts a caller may talk to; every URL, including each redirect
 //!   target, is checked against it, and so is the address the socket is opened to.

@@ -1,4 +1,4 @@
-//! The `host` global of a plugin: the only door out of the sandbox (D3).
+//! The `host` global of a plugin: the only door out of the sandbox.
 
 use std::{cell::Cell, rc::Rc};
 
@@ -203,7 +203,7 @@ fn fetch<'js>(
         reply_headers.set(name.as_str(), joined)?;
     }
     result.set("headers", reply_headers)?;
-    // Binary bodies are not supported in v1 (research.md R9): undecodable bytes become U+FFFD.
+    // Binary bodies are not supported in v1: undecodable bytes become U+FFFD.
     result.set("body", String::from_utf8_lossy(&response.body).as_ref())?;
     Ok(result)
 }

@@ -1,10 +1,7 @@
 //! The example plugins in `examples/plugins/` run in the real sandbox against a local server
 //! that answers with responses captured from the real services (`tests/fixtures/examples/`).
 //! Nothing here reaches the internet; the check against the live services is done by hand with
-//! `ferrolibri-plugin-check` (plan item 14).
-//!
-//! The Google Books response is the exception: it is written by hand from the API documentation
-//! (see `_fixture` in the file), because the service refused anonymous requests when it was made.
+//! `ferrolibri-plugin-check`.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -19,17 +16,14 @@ use ferrolibri_plugins::{
 };
 use serde_json::{Value, json};
 
-/// Every domain the examples may name (D12): the three legal sources and nothing else.
+/// Every domain the examples may name: the two sources that publish their catalogs for programs
+/// and offer books lawfully, and nothing else.
 const POLICY_DOMAINS: &[&str] = &[
     "openlibrary.org",
     "covers.openlibrary.org",
     "archive.org",
     "*.archive.org",
-    "www.googleapis.com",
-    "books.google.com",
     "www.gutenberg.org",
-    // The mock names a domain that never resolves (RFC 2606): it reaches no site.
-    "mock.invalid",
 ];
 
 fn examples_dir() -> PathBuf {
@@ -91,7 +85,7 @@ fn sole_query(server: &TestServer) -> ferrolibri_plugins::testing::Request {
 // --- All examples --------------------------------------------------------------------------
 
 #[test]
-fn every_example_is_a_compatible_plugin_for_one_of_the_legal_sources_or_the_mock() {
+fn every_example_is_a_compatible_plugin_for_one_of_the_legal_sources() {
     let mut seen = BTreeSet::new();
     for entry in std::fs::read_dir(examples_dir()).unwrap() {
         let dir = entry.unwrap().path();
@@ -112,19 +106,14 @@ fn every_example_is_a_compatible_plugin_for_one_of_the_legal_sources_or_the_mock
         for domain in &manifest.network.domains {
             assert!(
                 POLICY_DOMAINS.contains(&domain.as_str()),
-                "{folder}: {domain} is not a source the examples may use (D12)"
+                "{folder}: {domain} is not a source the examples may use"
             );
         }
         seen.insert(folder);
     }
     assert_eq!(
         seen.into_iter().collect::<Vec<_>>(),
-        [
-            "google-books",
-            "mock-library",
-            "opds-catalog",
-            "open-library"
-        ]
+        ["opds-catalog", "open-library"]
     );
 }
 
@@ -212,118 +201,6 @@ fn open_library_reports_a_refusal_and_a_failure_in_words() {
         let plugin = load("open-library", &[("base_url", &server.url("/"))]);
         let error = search(&plugin, &server, json!({ "text": "x", "page": 1 })).unwrap_err();
         assert!(error.contains(expected), "{error}");
-    }
-}
-
-// --- Google Books --------------------------------------------------------------------------
-
-fn google_server() -> TestServer {
-    TestServer::start(|request, _| match request.path.as_str() {
-        "/books/v1/volumes" => Reply::ok("application/json", fixture("google-books-search.json")),
-        _ => Reply::status(404),
-    })
-}
-
-#[test]
-fn google_books_maps_the_volumes_and_leaves_out_what_it_cannot_show() {
-    let server = google_server();
-    let plugin = load("google-books", &[("base_url", &server.url("/"))]);
-    let answer = search(
-        &plugin,
-        &server,
-        json!({ "text": "dracula stoker", "page": 1 }),
-    )
-    .unwrap();
-
-    let request = sole_query(&server);
-    assert_eq!(request.query_param("q").as_deref(), Some("dracula stoker"));
-    assert_eq!(request.query_param("printType").as_deref(), Some("books"));
-    assert_eq!(request.query_param("maxResults").as_deref(), Some("20"));
-    assert_eq!(request.query_param("startIndex").as_deref(), Some("0"));
-    assert_eq!(request.query_param("key"), None, "no key was entered");
-
-    let parsed = accept(&plugin, &answer);
-    assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
-    // The volume without a title is left out by the plugin.
-    assert_eq!(parsed.page.hits.len(), 2);
-    assert_eq!(
-        parsed.page.next_cursor, None,
-        "two of twenty is the last page"
-    );
-
-    let book = &parsed.page.hits[0];
-    assert_eq!(book.id, "ix0LAAAAYAAJ");
-    assert_eq!(book.title, "Dracula: A Mystery Story");
-    assert_eq!(book.authors, ["Bram Stoker"]);
-    assert_eq!(book.year, Some(1897));
-    assert_eq!(book.isbn.as_deref(), Some("9780141439518"));
-    assert_eq!(book.language.as_deref(), Some("en"));
-    assert_eq!(book.tags, ["Fiction / Horror"]);
-    assert_eq!(
-        book.description.as_deref(),
-        Some("The classic vampire novel & its \"Count\".\nTold in letters.\nAnd diaries.")
-    );
-    assert_eq!(
-        book.cover_url.as_deref(),
-        Some(
-            "https://books.google.com/books/content?id=ix0LAAAAYAAJ&printsec=frontcover&img=1&zoom=1&source=gbs_api"
-        )
-    );
-    assert_eq!(
-        book.page_url.as_deref(),
-        Some("https://books.google.com/books?id=ix0LAAAAYAAJ")
-    );
-    assert!(book.offers.is_empty());
-
-    let bare = &parsed.page.hits[1];
-    assert_eq!(
-        (bare.year, bare.isbn.as_deref(), bare.cover_url.as_deref()),
-        (None, None, None)
-    );
-    assert!(bare.authors.is_empty() && bare.description.is_none());
-}
-
-#[test]
-fn google_books_pages_by_start_index_and_sends_the_key_only_when_entered() {
-    let twenty: Vec<_> = (0..20)
-        .map(|n| json!({ "id": format!("v{n}"), "volumeInfo": { "title": format!("Book {n}") } }))
-        .collect();
-    let body = json!({ "items": twenty }).to_string();
-    let server = TestServer::start(move |_, _| Reply::ok("application/json", body.clone()));
-    let plugin = load(
-        "google-books",
-        &[("base_url", &server.url("/")), ("api_key", "my key&1")],
-    );
-
-    let answer = search(&plugin, &server, json!({ "text": "x", "page": 3 })).unwrap();
-    assert_eq!(
-        answer["next_cursor"], "60",
-        "a full page may be followed by another"
-    );
-    let answer = search(
-        &plugin,
-        &server,
-        json!({ "text": "x", "page": 2, "cursor": "20" }),
-    )
-    .unwrap();
-    assert_eq!(answer["next_cursor"], "40");
-
-    let requests = server.requests();
-    assert_eq!(requests[0].query_param("startIndex").as_deref(), Some("40"));
-    assert_eq!(requests[1].query_param("startIndex").as_deref(), Some("20"));
-    assert_eq!(requests[1].query_param("key").as_deref(), Some("my key&1"));
-}
-
-#[test]
-fn google_books_tells_the_user_what_to_do_when_the_quota_is_used_up() {
-    for status in [429, 403] {
-        let server = TestServer::start(move |_, _| Reply::status(status));
-        let plugin = load("google-books", &[("base_url", &server.url("/"))]);
-        let error = search(&plugin, &server, json!({ "text": "x", "page": 1 })).unwrap_err();
-        assert!(
-            error.contains("API key") && error.contains(&status.to_string()),
-            "{error}"
-        );
     }
 }
 

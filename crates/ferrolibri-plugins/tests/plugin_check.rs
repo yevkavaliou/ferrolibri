@@ -1,5 +1,5 @@
 //! The `ferrolibri-plugin-check` binary, run as an author would run it. The network is a local
-//! server addressed by IP (an address the user types is allowed, D4); the live services are
+//! server addressed by IP (an address the user types is allowed); the live services are
 //! checked by hand.
 
 use std::{path::PathBuf, process::Command};

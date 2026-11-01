@@ -5,7 +5,8 @@ use ferrolibri_core::{
     Error, ErrorKind,
     config::{self, Config},
     converter,
-    device::{DeviceKind, DeviceState},
+    device::DeviceKind,
+    jobs::{JobExecutor, JobRequest},
     metadata, scanner,
 };
 use std::{fs, io, path::Path};
@@ -94,30 +95,31 @@ fn opf_distinguishes_absence_corruption_structure_and_io_failure() {
 #[test]
 fn device_errors_retain_context_instead_of_strings() {
     let fixture = Fixture::new();
-    let disconnected = DeviceState::default();
-    assert!(matches!(
-        disconnected
-            .send_book(&fixture.book, "Author")
-            .unwrap_err()
-            .kind,
-        ErrorKind::Unavailable
-    ));
-    let connected = DeviceState {
-        connected: Some(test_support::device(DeviceKind::Kindle, &fixture.kindle)),
-    };
+    let kindle = test_support::device(DeviceKind::Kindle, &fixture.kindle);
     let missing = fixture.root.join("missing");
     assert_io(
-        &ferrolibri_core::device::prepare_file(
+        &ferrolibri_core::device::prepare_file_cancellable(
             &missing,
-            connected.connected.as_ref().unwrap(),
+            &kindle,
             Default::default(),
+            &converter::CancellationToken::default(),
         )
         .unwrap_err(),
         &missing,
     );
     fs::remove_dir(fixture.kindle.join("documents")).unwrap();
     fs::write(fixture.kindle.join("documents"), b"blocked").unwrap();
-    let error = connected.send_book(&fixture.book, "Author").unwrap_err();
+    let error = JobExecutor::new(1, 1)
+        .unwrap()
+        .submit(JobRequest::Send {
+            book: fixture.book.clone(),
+            author: "Author".into(),
+            device: kindle,
+            options: Default::default(),
+        })
+        .unwrap()
+        .wait()
+        .unwrap_err();
     assert_eq!(error.path.as_deref(), Some(fixture.kindle.as_path()));
     assert!(matches!(error.kind, ErrorKind::InvalidData(_)));
 }

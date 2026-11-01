@@ -1,4 +1,4 @@
-//! Downloading a found book and adding it to the library (plan item 13, design gap G6): the real
+//! Downloading a found book and adding it to the library : the real
 //! `view` and `update` driven through the headless simulator, with a scripted `Services` that
 //! stands in for the plugin runtime, the job queue and Calibre. The last group (`real`, ignored
 //! unless asked for) runs the whole chain against a local catalog and the real `calibredb`.
