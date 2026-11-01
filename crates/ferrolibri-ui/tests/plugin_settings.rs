@@ -908,11 +908,17 @@ fn a_compatible_folder_goes_check_then_confirm_then_install_and_is_not_turned_on
         )))));
     let mut state = settings_screen(&fake);
     open_dialog(&mut state, &fake);
-    type_folder(&mut state, &fake, "D:\\Plugins\\standard-ebooks");
+    // An absolute path of the system the test runs on: a Windows path is relative elsewhere.
+    let folder = if cfg!(windows) {
+        "D:\\Plugins\\standard-ebooks"
+    } else {
+        "/plugins/standard-ebooks"
+    };
+    type_folder(&mut state, &fake, folder);
     click(&mut state, "Check", &fake);
     assert_eq!(
         fake.calls().last().unwrap(),
-        r#"check Folder("D:\\Plugins\\standard-ebooks")"#
+        &format!("check Folder({folder:?})")
     );
     assert_shows(
         &state,
