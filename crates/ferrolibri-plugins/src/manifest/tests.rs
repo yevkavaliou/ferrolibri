@@ -205,14 +205,14 @@ fn min_app_version_newer_than_the_app_is_incompatible() {
     );
     let message = reasons(&m)[0].to_string();
     assert!(
-        message.contains("0.2.0") && message.contains("0.1.2"),
+        message.contains("0.2.0") && message.contains(&app().to_string()),
         "{message}"
     );
 }
 
 #[test]
 fn min_app_version_equal_or_older_is_compatible() {
-    for required in ["0.1.2", "0.1.0", "0.0.1"] {
+    for required in [app().to_string().as_str(), "0.1.0", "0.0.1"] {
         let m = with(|m| m.min_app_version = Some(required.into()));
         assert!(m.compatibility(&app()).is_compatible(), "{required}");
     }
